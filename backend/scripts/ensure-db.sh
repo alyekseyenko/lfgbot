@@ -8,7 +8,14 @@ import asyncpg
 
 
 async def ensure_test_db() -> None:
-    conn = await asyncpg.connect("postgresql://lfg:lfg@postgres:5432/lfg")
+    import os
+    from urllib.parse import quote_plus
+
+    user = os.environ.get("POSTGRES_USER", "lfg")
+    password = quote_plus(os.environ.get("POSTGRES_PASSWORD", "lfg"))
+    db = os.environ.get("POSTGRES_DB", "lfg")
+    dsn = f"postgresql://{user}:{password}@postgres:5432/{db}"
+    conn = await asyncpg.connect(dsn)
     try:
         await conn.execute("CREATE DATABASE lfg_test")
     except asyncpg.DuplicateDatabaseError:
