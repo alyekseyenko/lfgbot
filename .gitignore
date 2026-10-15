@@ -1,0 +1,21 @@
+.env
+.venv/
+backend/.venv/
+# Cópias locais na raiz; as imagens públicas estão em docs/images/
+/Images/
+.cursor/plans/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+dist/
+build/
+*.egg-info/
+node_modules/
+frontend/dist/
+.DS_Store
+*.log

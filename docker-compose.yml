@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lfg
+      POSTGRES_PASSWORD: lfg
+      POSTGRES_DB: lfg
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lfg -d lfg"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # Para ferramentas locais (DBeaver, psql): descomenta e usa outra porta se 5432 estiver ocupada
+    # ports:
+    #   - "5433:5432"
+
+  app:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://lfg:lfg@postgres:5432/lfg
+    working_dir: /app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

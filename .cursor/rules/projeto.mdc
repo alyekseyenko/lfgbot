@@ -1,0 +1,69 @@
+---
+description: Regras fixas do projeto LFG Valorant (bot Discord + API + web app)
+alwaysApply: true
+---
+
+# Projeto LFG Valorant
+
+Sistema de procura de grupo (LFG) para uma comunidade portuguesa de Valorant no Discord (~13 mil membros).
+A descrição completa está em `docs/PROJETO.md`. Lê-a antes de propor qualquer plano.
+
+## Stack
+
+- Backend: Python 3.12, discord.py, FastAPI, SQLAlchemy 2.0 (async), Alembic, PostgreSQL.
+- Front-end (SÓ na fase 3): React + Vite + TypeScript, PWA.
+- Testes: pytest + pytest-asyncio.
+- Gestão de dependências: uv ou pip + pyproject.toml (um só, consistente).
+- Deploy: Docker Compose (app, postgres, caddy) num VPS Hetzner.
+- Um único processo para bot + API (monólito simples). Não separar em microserviços.
+
+## Estrutura do backend
+
+```
+backend/
+  app/
+    bot/        # discord.py: comandos, views, listeners (SEM lógica de negócio)
+    api/        # FastAPI (fase 3)
+    services/   # TODA a lógica de negócio (lobbies, utilizadores, ...)
+    db/         # modelos, sessão, repositórios
+    core/       # config (pydantic-settings), logging, eventos internos
+  migrations/   # Alembic
+  tests/
+```
+
+## Regras de arquitetura (obrigatórias)
+
+1. A base de dados é a fonte de verdade. O Discord é só apresentação: se o bot cair, o estado não se perde.
+2. Sair ou ser removido de um lobby é APENAS uma alteração na BD. Nunca expulsar do servidor Discord. Só um moderador faz isso, manualmente.
+3. Todas as operações sobre lobbies são idempotentes (carregar duas vezes em Entrar não duplica a pessoa) e transacionais.
+4. Lógica de negócio só em `services/`. Os handlers do bot apenas chamam serviços e atualizam a embed.
+5. O núcleo emite eventos internos (jogador entrou, jogador saiu, lobby cheio, lobby expirou). O bot (e mais tarde o WebSocket) reage a esses eventos.
+6. Rate limits do Discord: agrupar/limitar edições de embeds (debounce), nunca editar a cada evento.
+7. Lobbies expiram sozinhos através de um job periódico.
+8. Os botões têm de sobreviver a reinícios (views persistentes com `custom_id` estável).
+9. Acesso a dados atrás de uma camada de repositórios, para poder trocar ou testar facilmente.
+10. Tudo em UTC na BD; converter só na apresentação.
+
+## Regras de trabalho
+
+- Implementa APENAS o passo pedido. Não acrescentes funcionalidades fora do âmbito (perfis, reputação, front-end, moderação) nem ficheiros que não foram pedidos.
+- Se tiveres uma sugestão fora do âmbito, escreve-a no fim da resposta e não a implementes.
+- Mostra o plano de ficheiros antes de escrever código.
+- Cada passo inclui testes. Código de concorrência/transações tem de ter teste explícito.
+- Tipos e anotações em todo o código Python (compatível com mypy/pyright). Linting com ruff.
+- Segredos (token do bot, passwords) só em variáveis de ambiente. Nunca no repositório. Mantém `.env.example` atualizado e `.env` no `.gitignore`.
+- Commits pequenos, um por passo, com mensagem clara.
+- Textos visíveis aos utilizadores (embeds, mensagens, erros) em português europeu.
+- Nomes de código (variáveis, funções, tabelas) em inglês, exceto termos já definidos no `docs/PROJETO.md`.
+
+## RGPD
+
+Guardar o mínimo necessário (ID do Discord, nome, rank, dados de lobbies). Prever desde o início a possibilidade de apagar os dados de um utilizador a seu pedido.
+
+## Modelo de dados mínimo (fase 1)
+
+- users (discord_id, name, rank, created_at)
+- lobbies (id, host_id, mode, slots, party_code, state, expires_at, channel_id, message_id)
+- lobby_members (lobby_id, user_id, joined_at, left_at, leave_reason)
+
+`ratings` e `moderation_log` ficam para a fase 4. Não criar agora.
