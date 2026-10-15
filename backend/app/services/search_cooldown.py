@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,13 +16,43 @@ LEAVE_REASON_KICKED = "kicked"
 LEAVE_REASON_CLOSED = "closed"
 LEAVE_REASON_EXPIRED = "expired"
 
+DEFAULT_EARLY_MAX_COUNT = 3
+DEFAULT_EARLY_MINUTES = 5
+DEFAULT_MID_MINUTES = 15
+DEFAULT_SEVERE_HOURS = 12
 
-def cooldown_duration_for_daily_count(count: int) -> timedelta:
-    if count <= 3:
-        return timedelta(minutes=5)
-    if count == 4:
-        return timedelta(minutes=15)
-    return timedelta(hours=12)
+
+@dataclass(frozen=True, slots=True)
+class SearchCooldownPolicy:
+    enabled: bool = True
+    early_minutes: int = DEFAULT_EARLY_MINUTES
+    early_max_daily_count: int = DEFAULT_EARLY_MAX_COUNT
+    mid_minutes: int = DEFAULT_MID_MINUTES
+    severe_hours: int = DEFAULT_SEVERE_HOURS
+
+
+def _clamp_policy(policy: SearchCooldownPolicy) -> SearchCooldownPolicy:
+    return SearchCooldownPolicy(
+        enabled=policy.enabled,
+        early_minutes=max(1, min(policy.early_minutes, 24 * 60)),
+        early_max_daily_count=max(1, min(policy.early_max_daily_count, 20)),
+        mid_minutes=max(1, min(policy.mid_minutes, 24 * 60)),
+        severe_hours=max(1, min(policy.severe_hours, 24 * 7)),
+    )
+
+
+def cooldown_duration_for_daily_count(
+    count: int,
+    policy: SearchCooldownPolicy | None = None,
+) -> timedelta:
+    resolved = _clamp_policy(policy or SearchCooldownPolicy())
+    if not resolved.enabled:
+        return timedelta(0)
+    if count <= resolved.early_max_daily_count:
+        return timedelta(minutes=resolved.early_minutes)
+    if count == resolved.early_max_daily_count + 1:
+        return timedelta(minutes=resolved.mid_minutes)
+    return timedelta(hours=resolved.severe_hours)
 
 
 def format_search_blocked_until(until: datetime) -> str:
@@ -35,15 +66,26 @@ def assert_can_search(user: User, now: datetime) -> None:
 
 
 async def apply_private_voluntary_leave_penalty(
-    session: AsyncSession, user: User, now: datetime
-) -> datetime:
+    session: AsyncSession,
+    user: User,
+    now: datetime,
+    *,
+    policy: SearchCooldownPolicy | None = None,
+) -> datetime | None:
+    resolved = _clamp_policy(policy or SearchCooldownPolicy())
+    if not resolved.enabled:
+        return None
+
     today = now.astimezone(PORTUGAL).date()
     if user.private_leave_day != today:
         user.private_leave_day = today
         user.private_leave_count = 0
 
     user.private_leave_count += 1
-    duration = cooldown_duration_for_daily_count(user.private_leave_count)
+    duration = cooldown_duration_for_daily_count(user.private_leave_count, resolved)
+    if duration <= timedelta(0):
+        return None
+
     blocked_until = now + duration
     if user.search_blocked_until is None or blocked_until > user.search_blocked_until:
         user.search_blocked_until = blocked_until

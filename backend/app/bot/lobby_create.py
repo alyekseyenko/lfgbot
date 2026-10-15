@@ -9,11 +9,19 @@ import discord
 from discord.ext import commands
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.bot.host_cooldown import resolve_host_recreate_cooldown
 from app.bot.lobby_post import publish_lobby
 from app.core.config import Settings
 from app.core.events import EventBus
 from app.services import lobbies as lobby_service
-from app.services.errors import RankRangeError, SearchBlockedError
+from app.services.errors import (
+    HostRecreateBlockedError,
+    PartyCodeInUseError,
+    RankRangeError,
+    SearchBlockedError,
+)
+from app.services.guild_config import GuildConfigService
+from app.services.lobby_source import LOBBY_SOURCE_UNKNOWN
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +59,8 @@ async def begin_lobby_create(
     params: LobbyCreateParams,
     interaction: discord.Interaction | None = None,
     reference: discord.Message | None = None,
+    guild_config: GuildConfigService | None = None,
+    create_source: str = LOBBY_SOURCE_UNKNOWN,
 ) -> Literal["published", "pending_replace", "rejected"]:
     try:
         from app.services.ranks import validate_rank_range
@@ -83,8 +93,10 @@ async def begin_lobby_create(
                 wanted_agents=list(params.wanted_agents),
                 ranks_verified=params.ranks_verified,
                 reference=reference,
+                guild_config=guild_config,
+                create_source=create_source,
             )
-        except SearchBlockedError as exc:
+        except (SearchBlockedError, HostRecreateBlockedError, PartyCodeInUseError) as exc:
             if interaction is not None:
                 await interaction.followup.send(str(exc), ephemeral=True)
             return "rejected"
@@ -102,6 +114,8 @@ async def begin_lobby_create(
         previous_lobby_id=existing.id,
         params=params,
         reference=reference,
+        guild_config=guild_config,
+        create_source=create_source,
     )
     summary = (
         f"Já tens um lobby **{existing.mode}** aberto ({existing.slots} vagas, "
@@ -133,8 +147,11 @@ class ReplaceLobbyView(discord.ui.View):
         previous_lobby_id: UUID,
         params: LobbyCreateParams,
         reference: discord.Message | None,
+        guild_config: GuildConfigService | None = None,
+        create_source: str = LOBBY_SOURCE_UNKNOWN,
     ) -> None:
         super().__init__(timeout=120)
+        self._create_source = create_source
         self._bot = bot
         self._channel = channel
         self._settings = settings
@@ -144,6 +161,7 @@ class ReplaceLobbyView(discord.ui.View):
         self._previous_lobby_id = previous_lobby_id
         self._params = params
         self._reference = reference
+        self._guild_config = guild_config
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user is None or interaction.user.id != self._host_id:
@@ -154,9 +172,7 @@ class ReplaceLobbyView(discord.ui.View):
         return True
 
     @discord.ui.button(label="Fechar anterior e criar", style=discord.ButtonStyle.danger)
-    async def confirm(
-        self, interaction: discord.Interaction, _button: discord.ui.Button
-    ) -> None:
+    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         await interaction.response.defer(ephemeral=True)
         host = interaction.user
         if not isinstance(host, discord.Member):
@@ -164,6 +180,12 @@ class ReplaceLobbyView(discord.ui.View):
             return
 
         try:
+            host_recreate_cooldown = await resolve_host_recreate_cooldown(
+                self._guild_config,
+                self._session_factory,
+                host,
+                self._channel,
+            )
             async with self._session_factory() as session:
                 async with session.begin():
                     await lobby_service.close_lobby_as_host(
@@ -171,6 +193,8 @@ class ReplaceLobbyView(discord.ui.View):
                         self._event_bus,
                         lobby_id=self._previous_lobby_id,
                         host_id=self._host_id,
+                        host_recreate_cooldown=host_recreate_cooldown,
+                        apply_host_recreate_cooldown_on_close=False,
                     )
 
             await publish_lobby(
@@ -189,8 +213,10 @@ class ReplaceLobbyView(discord.ui.View):
                 wanted_agents=list(self._params.wanted_agents),
                 ranks_verified=self._params.ranks_verified,
                 reference=self._reference,
+                guild_config=self._guild_config,
+                create_source=self._create_source,
             )
-        except SearchBlockedError as exc:
+        except (SearchBlockedError, HostRecreateBlockedError, PartyCodeInUseError) as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return
         except Exception:
@@ -205,12 +231,12 @@ class ReplaceLobbyView(discord.ui.View):
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
         await interaction.message.edit(view=self)
-        await interaction.followup.send("Lobby anterior fechado. Novo pedido publicado.", ephemeral=True)
+        await interaction.followup.send(
+            "Lobby anterior fechado. Novo pedido publicado.", ephemeral=True
+        )
 
     @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.secondary)
-    async def cancel(
-        self, interaction: discord.Interaction, _button: discord.ui.Button
-    ) -> None:
+    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True

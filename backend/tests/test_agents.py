@@ -9,11 +9,6 @@ from app.services.lobbies import create_lobby, join_lobby
 from app.services.users import upsert_user
 
 
-@pytest.fixture
-def event_bus() -> EventBus:
-    return EventBus()
-
-
 def test_serialize_wanted_agents() -> None:
     assert serialize_wanted_agents(["Initiator", "Sentinel"]) == "Initiator,Sentinel"
     assert parse_wanted_agents_csv("Initiator,Sentinel") == ["Initiator", "Sentinel"]

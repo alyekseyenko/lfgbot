@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import time
+
 import discord
 from discord.ext import commands
 from sqlalchemy import select
@@ -13,6 +14,17 @@ from app.core.config import Settings
 from app.core.events import EventBus
 from app.db.models import LfgPanelPost
 from app.services.errors import RankRangeError
+from app.services.guild_config import GuildConfigService
+from app.services.lfg_embed_style import (
+    DEFAULT_COMPETITIVE_COLOR,
+    DEFAULT_PANEL_CTA,
+    DEFAULT_PANEL_LEAD,
+    LobbyEmbedStyle,
+    embed_custom_text,
+    lobby_embed_style_from_config,
+    parse_embed_hex_color,
+)
+from app.services.lobby_source import LOBBY_SOURCE_PANEL
 from app.services.ranks import VALORANT_RANKS, normalize_rank_name, validate_rank_range
 
 RANK_SELECT_NONE = "__none__"
@@ -38,6 +50,30 @@ def channel_allowed(settings: Settings, channel_id: int) -> bool:
     if not allowed:
         return True
     return channel_id in allowed
+
+
+async def channel_allowed_async(
+    guild_config: GuildConfigService,
+    session_factory: async_sessionmaker[AsyncSession],
+    guild_id: int | None,
+    channel_id: int,
+) -> bool:
+    return await guild_config.channel_allowed(session_factory, guild_id, channel_id)
+
+
+async def collect_lfg_channel_ids(
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+    guild_config: GuildConfigService,
+) -> list[int]:
+    channel_ids: set[int] = set()
+    async with session_factory() as session:
+        for guild_id in await guild_config.list_installed_guild_ids(session):
+            cfg = await guild_config.get_config(session, guild_id)
+            channel_ids.update(cfg.lfg_channel_ids)
+    if not channel_ids:
+        channel_ids.update(settings.lfg_channel_id_list)
+    return sorted(channel_ids)
 
 
 def default_mode_for_channel(settings: Settings, channel: discord.abc.GuildChannel) -> str:
@@ -66,9 +102,8 @@ def rank_select_options() -> list[discord.SelectOption]:
         discord.SelectOption(label="Sem limite", value=RANK_SELECT_NONE, emoji="♾️"),
     ]
     for rank in VALORANT_RANKS:
-        if rank == "Unranked":
-            continue
-        options.append(discord.SelectOption(label=rank, value=rank))
+        label = "Unranked (sem ranked)" if rank == "Unranked" else rank
+        options.append(discord.SelectOption(label=label, value=rank))
     return options
 
 
@@ -104,10 +139,21 @@ async def execute_panel_lobby_create(
         await interaction.followup.send(str(exc), ephemeral=True)
         return
 
+    runtime = None
+    if panel.guild_config is not None and interaction.guild is not None:
+        runtime = await panel.guild_config.get_config_for_factory(
+            panel.session_factory, interaction.guild.id
+        )
     if isinstance(channel, discord.abc.GuildChannel):
-        mode = default_mode_for_channel(panel.settings, channel)
+        name = getattr(channel, "name", "").lower()
+        if "unrated" in name:
+            mode = "Unrated"
+        elif runtime is not None:
+            mode = runtime.default_lfg_mode
+        else:
+            mode = default_mode_for_channel(panel.settings, channel)
     else:
-        mode = panel.settings.default_lfg_mode
+        mode = runtime.default_lfg_mode if runtime else panel.settings.default_lfg_mode
 
     from app.bot.lobby_create import LobbyCreateParams, begin_lobby_create
 
@@ -131,6 +177,8 @@ async def execute_panel_lobby_create(
             host=interaction.user,
             params=params,
             interaction=interaction,
+            guild_config=panel.guild_config,
+            create_source=LOBBY_SOURCE_PANEL,
         )
     except Exception:
         logger.exception("panel create failed for user %s", interaction.user.id)
@@ -140,20 +188,79 @@ async def execute_panel_lobby_create(
         )
 
 
+def _panel_title(decorative: bool) -> str:
+    if decorative:
+        return f"🎯 {PANEL_EMBED_TITLE}"
+    return PANEL_EMBED_TITLE
+
+
+def _message_has_panel_button(message: discord.Message) -> bool:
+    for row in getattr(message, "components", ()) or ():
+        for child in row.children:
+            if getattr(child, "custom_id", None) == PANEL_BUTTON_CUSTOM_ID:
+                return True
+    return False
+
+
 def is_panel_message(message: discord.Message, bot_user_id: int | None) -> bool:
     if bot_user_id is None or message.author.id != bot_user_id:
         return False
+    if _message_has_panel_button(message):
+        return True
     if not message.embeds:
         return False
-    return message.embeds[0].title == PANEL_EMBED_TITLE
+    title = message.embeds[0].title or ""
+    return PANEL_EMBED_TITLE in title
 
 
-def build_panel_embed() -> discord.Embed:
-    return discord.Embed(
-        title=PANEL_EMBED_TITLE,
-        description=PANEL_EMBED_DESCRIPTION,
-        color=0xFD4556,
+def build_panel_embed(embed_style: LobbyEmbedStyle | None = None) -> discord.Embed:
+    decorative = embed_style.panel_decorative if embed_style is not None else True
+    custom_title = embed_custom_text(embed_style, "panel_title", "")
+    title = custom_title if custom_title else _panel_title(decorative)
+    custom_body = embed_custom_text(embed_style, "panel_description", "")
+    if custom_body:
+        description = custom_body
+    else:
+        description = PANEL_EMBED_DESCRIPTION
+        if decorative:
+            lead = embed_custom_text(embed_style, "panel_lead", DEFAULT_PANEL_LEAD)
+            cta = embed_custom_text(embed_style, "panel_cta", DEFAULT_PANEL_CTA)
+            description = f"{lead}\n\n{PANEL_EMBED_DESCRIPTION}\n\n{cta}"
+    hex_color = (
+        parse_embed_hex_color(embed_style.panel_color, default=DEFAULT_COMPETITIVE_COLOR)
+        if embed_style is not None
+        else DEFAULT_COMPETITIVE_COLOR
     )
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=int(hex_color, 16),
+    )
+    if embed_style is not None:
+        brand = (embed_style.panel_footer_brand or embed_style.footer_brand or "").strip()
+        if brand:
+            embed.set_footer(text=brand)
+        if embed_style.panel_thumbnail_url:
+            embed.set_thumbnail(url=embed_style.panel_thumbnail_url)
+        panel_banner = (embed_style.panel_banner_url or "").strip()
+        if not panel_banner and embed_style.banner_on_panel:
+            panel_banner = (embed_style.banner_url or "").strip()
+        if panel_banner:
+            embed.set_image(url=panel_banner)
+    return embed
+
+
+async def _panel_embed_for_guild(
+    session_factory: async_sessionmaker[AsyncSession],
+    guild_config: GuildConfigService,
+    guild_id: int | None,
+) -> discord.Embed:
+    if guild_id is None:
+        return build_panel_embed()
+    cfg = await guild_config.get_config_for_factory(session_factory, guild_id)
+    if cfg is None:
+        return build_panel_embed()
+    return build_panel_embed(lobby_embed_style_from_config(cfg))
 
 
 def rank_extras_prompt(*, slots: int, party_code: str | None) -> str:
@@ -311,6 +418,7 @@ class CreateGroupPanelView(discord.ui.View):
         self.settings: Settings | None = None
         self.session_factory: async_sessionmaker[AsyncSession] | None = None
         self.event_bus: EventBus | None = None
+        self.guild_config: GuildConfigService | None = None
 
     def bind(
         self,
@@ -318,22 +426,34 @@ class CreateGroupPanelView(discord.ui.View):
         settings: Settings,
         session_factory: async_sessionmaker[AsyncSession],
         event_bus: EventBus,
+        guild_config: GuildConfigService,
     ) -> None:
         self.bot = bot
         self.settings = settings
         self.session_factory = session_factory
         self.event_bus = event_bus
+        self.guild_config = guild_config
 
     async def _on_create(self, interaction: discord.Interaction) -> None:
-        if self.bot is None or self.settings is None:
+        if (
+            self.bot is None
+            or self.settings is None
+            or self.session_factory is None
+            or self.guild_config is None
+        ):
             await interaction.response.send_message(
                 "Bot em arranque. Tenta outra vez.",
                 ephemeral=True,
             )
             return
-        if interaction.channel_id is None or not channel_allowed(
-            self.settings, interaction.channel_id
-        ):
+        guild_id = interaction.guild.id if interaction.guild else None
+        allowed = interaction.channel_id is not None and await channel_allowed_async(
+            self.guild_config,
+            self.session_factory,
+            guild_id,
+            interaction.channel_id,
+        )
+        if interaction.channel_id is None or not allowed:
             await interaction.response.send_message(
                 "Este painel só funciona nos canais LFG configurados.",
                 ephemeral=True,
@@ -347,9 +467,10 @@ def register_create_panel_view(
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
+    guild_config: GuildConfigService,
 ) -> None:
     view = CreateGroupPanelView()
-    view.bind(bot, settings, session_factory, event_bus)
+    view.bind(bot, settings, session_factory, event_bus, guild_config)
     bot.add_view(view)
 
 
@@ -359,6 +480,7 @@ async def publish_panel_message_bound(
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
+    guild_config: GuildConfigService,
     *,
     replace_previous: bool = True,
 ) -> discord.Message:
@@ -378,8 +500,10 @@ async def publish_panel_message_bound(
                         pass
 
     view = CreateGroupPanelView()
-    view.bind(bot, settings, session_factory, event_bus)
-    message = await channel.send(embed=build_panel_embed(), view=view)
+    view.bind(bot, settings, session_factory, event_bus, guild_config)
+    guild_id = channel.guild.id if channel.guild is not None else None
+    panel_embed = await _panel_embed_for_guild(session_factory, guild_config, guild_id)
+    message = await channel.send(embed=panel_embed, view=view)
 
     async with session_factory() as session:
         async with session.begin():
@@ -414,13 +538,99 @@ async def resolve_lfg_text_channel(
     return None
 
 
+async def _ensure_panel_in_channel(
+    bot: commands.Bot,
+    channel: discord.TextChannel,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+    event_bus: EventBus,
+    guild_config: GuildConfigService,
+) -> bool:
+    """Garante painel válido no canal. Devolve True se publicou ou atualizou."""
+    channel_id = channel.id
+    needs_post = True
+    async with session_factory() as session:
+        result = await session.execute(
+            select(LfgPanelPost).where(LfgPanelPost.channel_id == channel_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is not None:
+            try:
+                msg = await channel.fetch_message(row.message_id)
+                if msg.author.id == bot.user.id and is_panel_message(msg, bot.user.id):
+                    needs_post = False
+                    guild_id = channel.guild.id if channel.guild is not None else None
+                    panel_embed = await _panel_embed_for_guild(
+                        session_factory, guild_config, guild_id
+                    )
+                    try:
+                        await msg.edit(embed=panel_embed)
+                        logger.info(
+                            "painel LFG: embed atualizado no canal %s",
+                            channel_id,
+                        )
+                        return True
+                    except discord.HTTPException:
+                        logger.exception(
+                            "painel LFG: falha ao atualizar embed no canal %s",
+                            channel_id,
+                        )
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                needs_post = True
+
+    if needs_post:
+        await publish_panel_message_bound(
+            bot,
+            channel,
+            settings,
+            session_factory,
+            event_bus,
+            guild_config,
+            replace_previous=False,
+        )
+        logger.info("painel LFG publicado no canal %s", channel_id)
+        return True
+    return False
+
+
+async def ensure_guild_lfg_panels(
+    bot: commands.Bot,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+    event_bus: EventBus,
+    guild_config: GuildConfigService,
+    guild_id: int,
+) -> int:
+    """Publica/atualiza painéis nos canais LFG do servidor (se sticky ativo na BD)."""
+    async with session_factory() as session:
+        cfg = await guild_config.get_config(session, guild_id)
+    if not cfg.panel_sticky_enabled or not cfg.lfg_channel_ids:
+        return 0
+
+    posted = 0
+    for channel_id in cfg.lfg_channel_ids:
+        channel = await resolve_lfg_text_channel(bot, channel_id)
+        if channel is None or channel.guild is None or channel.guild.id != guild_id:
+            logger.warning("painel LFG: canal %s inválido para o servidor %s", channel_id, guild_id)
+            continue
+        try:
+            if await _ensure_panel_in_channel(
+                bot, channel, settings, session_factory, event_bus, guild_config
+            ):
+                posted += 1
+        except discord.HTTPException:
+            logger.exception("falha ao publicar painel LFG no canal %s", channel_id)
+    return posted
+
+
 async def ensure_lfg_panels(
     bot: commands.Bot,
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
+    guild_config: GuildConfigService,
 ) -> None:
-    channel_ids = settings.lfg_channel_id_list
+    channel_ids = await collect_lfg_channel_ids(settings, session_factory, guild_config)
     if not channel_ids:
         return
 
@@ -430,47 +640,12 @@ async def ensure_lfg_panels(
             logger.warning("painel LFG: canal %s não encontrado ou não é texto", channel_id)
             continue
 
-        needs_post = True
-        async with session_factory() as session:
-            result = await session.execute(
-                select(LfgPanelPost).where(LfgPanelPost.channel_id == channel_id)
+        try:
+            await _ensure_panel_in_channel(
+                bot, channel, settings, session_factory, event_bus, guild_config
             )
-            row = result.scalar_one_or_none()
-            if row is not None:
-                try:
-                    msg = await channel.fetch_message(row.message_id)
-                    if msg.author.id == bot.user.id and msg.embeds:
-                        title = msg.embeds[0].title
-                        if title == PANEL_EMBED_TITLE:
-                            needs_post = False
-                            if msg.embeds[0].description != PANEL_EMBED_DESCRIPTION:
-                                try:
-                                    await msg.edit(embed=build_panel_embed())
-                                    logger.info(
-                                        "painel LFG: texto atualizado no canal %s",
-                                        channel_id,
-                                    )
-                                except discord.HTTPException:
-                                    logger.exception(
-                                        "painel LFG: falha ao atualizar texto no canal %s",
-                                        channel_id,
-                                    )
-                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-                    needs_post = True
-
-        if needs_post:
-            try:
-                await publish_panel_message_bound(
-                    bot,
-                    channel,
-                    settings,
-                    session_factory,
-                    event_bus,
-                    replace_previous=False,
-                )
-                logger.info("painel LFG publicado no canal %s", channel_id)
-            except discord.HTTPException:
-                logger.exception("falha ao publicar painel LFG no canal %s", channel_id)
+        except discord.HTTPException:
+            logger.exception("falha ao publicar painel LFG no canal %s", channel_id)
 
 
 class PanelStickyManager:
@@ -496,18 +671,22 @@ class PanelStickyManager:
         session_factory: async_sessionmaker[AsyncSession],
         event_bus: EventBus,
         message: discord.Message,
+        guild_config: GuildConfigService,
     ) -> None:
-        if not settings.panel_sticky_enabled:
+        if message.guild is None or not isinstance(message.channel, discord.TextChannel):
             return
-        if not isinstance(message.channel, discord.TextChannel):
+        runtime = await guild_config.get_config_for_factory(session_factory, message.guild.id)
+        if not runtime.panel_sticky_enabled:
             return
-        if not channel_allowed(settings, message.channel.id):
+        if not await channel_allowed_async(
+            guild_config, session_factory, message.guild.id, message.channel.id
+        ):
             return
         bot_id = bot.user.id if bot.user else None
         if is_panel_message(message, bot_id):
             return
         await self._ensure_bump_scheduled(
-            bot, settings, session_factory, event_bus, message.channel
+            bot, settings, session_factory, event_bus, message.channel, guild_config
         )
 
     async def notify_after_lobby_post(
@@ -517,12 +696,20 @@ class PanelStickyManager:
         session_factory: async_sessionmaker[AsyncSession],
         event_bus: EventBus,
         channel: discord.TextChannel,
+        guild_config: GuildConfigService,
     ) -> None:
-        if not settings.panel_sticky_enabled:
+        if channel.guild is None:
             return
-        if not channel_allowed(settings, channel.id):
+        runtime = await guild_config.get_config_for_factory(session_factory, channel.guild.id)
+        if not runtime.panel_sticky_enabled:
             return
-        await self._ensure_bump_scheduled(bot, settings, session_factory, event_bus, channel)
+        if not await channel_allowed_async(
+            guild_config, session_factory, channel.guild.id, channel.id
+        ):
+            return
+        await self._ensure_bump_scheduled(
+            bot, settings, session_factory, event_bus, channel, guild_config
+        )
 
     async def _ensure_bump_scheduled(
         self,
@@ -531,6 +718,7 @@ class PanelStickyManager:
         session_factory: async_sessionmaker[AsyncSession],
         event_bus: EventBus,
         channel: discord.TextChannel,
+        guild_config: GuildConfigService,
     ) -> None:
         channel_id = channel.id
         existing = self._scheduled.get(channel_id)
@@ -546,7 +734,7 @@ class PanelStickyManager:
                 if delay > 0:
                     await asyncio.sleep(delay)
                 await self._bump_if_needed(
-                    bot, settings, session_factory, event_bus, channel
+                    bot, settings, session_factory, event_bus, channel, guild_config
                 )
             except asyncio.CancelledError:
                 raise
@@ -564,6 +752,7 @@ class PanelStickyManager:
         session_factory: async_sessionmaker[AsyncSession],
         event_bus: EventBus,
         channel: discord.TextChannel,
+        guild_config: GuildConfigService,
     ) -> None:
         channel_id = channel.id
         lock = self._lock_for(channel_id)
@@ -587,6 +776,7 @@ class PanelStickyManager:
                     settings,
                     session_factory,
                     event_bus,
+                    guild_config,
                     replace_previous=True,
                 )
                 self._last_bump[channel_id] = time.monotonic()
@@ -611,9 +801,10 @@ async def notify_panel_sticky_activity(
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
     message: discord.Message,
+    guild_config: GuildConfigService,
 ) -> None:
     await get_panel_sticky_manager(settings).notify_channel_activity(
-        bot, settings, session_factory, event_bus, message
+        bot, settings, session_factory, event_bus, message, guild_config
     )
 
 
@@ -623,7 +814,10 @@ async def notify_panel_sticky_after_lobby(
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
     channel: discord.TextChannel,
+    guild_config: GuildConfigService | None = None,
 ) -> None:
+    if guild_config is None:
+        return
     await get_panel_sticky_manager(settings).notify_after_lobby_post(
-        bot, settings, session_factory, event_bus, channel
+        bot, settings, session_factory, event_bus, channel, guild_config
     )

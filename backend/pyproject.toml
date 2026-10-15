@@ -12,12 +12,17 @@ dependencies = [
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
     "pydantic-settings>=2.6.0",
+    "httpx>=0.28.0",
+    "itsdangerous>=2.2.0",
+    "prometheus-client>=0.21.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "mypy>=1.14.0",
     "ruff>=0.8.0",
 ]
 
@@ -39,3 +44,28 @@ select = ["E", "F", "I", "UP", "B"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/migrations/*"]
+
+[tool.coverage.report]
+fail_under = 0
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.services.*", "app.core.*"]
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+ignore_errors = true

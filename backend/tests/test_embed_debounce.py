@@ -1,4 +1,3 @@
-import asyncio
 from uuid import uuid4
 
 import pytest
@@ -10,11 +9,12 @@ from app.bot.embed_updater import EmbedUpdateDebouncer
 async def test_debouncer_batches_ids() -> None:
     debouncer = EmbedUpdateDebouncer(interval_seconds=0.05)
     a, b = uuid4(), uuid4()
-    debouncer.schedule(a)
-    debouncer.schedule(b)
-    debouncer.schedule(a)
+    debouncer.mark_edited(a)
+    debouncer.mark_edited(b)
+    assert debouncer.schedule(a) is False
+    assert debouncer.schedule(b) is False
+    assert debouncer.schedule(a) is False
 
-    await asyncio.sleep(0.06)
     batch = await debouncer.drain()
     assert batch == {a, b}
 

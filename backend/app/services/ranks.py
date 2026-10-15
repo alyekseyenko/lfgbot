@@ -114,9 +114,7 @@ def rank_fits_lobby(
     min_rank: str | None,
     max_rank: str | None,
 ) -> bool:
-    return rank_meets_minimum(user_rank, min_rank) and rank_meets_maximum(
-        user_rank, max_rank
-    )
+    return rank_meets_minimum(user_rank, min_rank) and rank_meets_maximum(user_rank, max_rank)
 
 
 def format_rank(rank: str | None) -> str:

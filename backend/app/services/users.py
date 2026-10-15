@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.ranks import normalize_rank_name
 from app.db.models import User
+from app.services.ranks import normalize_rank_name
 
 
 async def upsert_user(

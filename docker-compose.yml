@@ -22,12 +22,77 @@ services:
     env_file:
       - .env
     environment:
+      PYTHONPATH: /app
       DATABASE_URL: postgresql+asyncpg://lfg:lfg@postgres:5432/lfg
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      PUBLIC_APP_URL: http://localhost:5190
+      OAUTH_REDIRECT_URI: http://localhost:8000/auth/discord/callback
     working_dir: /app
+    # Código Python e migrações no host (dev): sem rebuild a cada alteração; alembic no arranque.
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/tests:/app/tests
+      - ./backend/migrations:/app/migrations
+      - ./backend/scripts:/app/scripts
+      - ./backend/docker-entrypoint.sh:/app/docker-entrypoint.sh
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=5)\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
     restart: unless-stopped
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      VITE_API_TARGET: http://app:8000
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "5190:5173"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    profiles: [observability]
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      app:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: [observability]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:
+  web_node_modules:

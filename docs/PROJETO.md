@@ -53,6 +53,8 @@ Discord -> Bot (discord.py)
 
 `ratings` e `moderation_log` na fase 4.
 
+**Auditoria (canal de logs):** embeds no Discord apenas. Na BD guarda-se só `guild_settings.log_channel_id` (0 = desligado). Não há tabela de eventos de auditoria — evita crescimento desnecessário da PostgreSQL. O histórico é o próprio canal Discord (retention conforme as regras do servidor).
+
 ## 7. Fases
 
 1. **MVP (~1 semana):** `/procurar` ou formatação automática, embed com botões, expiração, PostgreSQL. Piloto no Unrated.
@@ -64,6 +66,10 @@ Discord -> Bot (discord.py)
 
 Guardar o mínimo necessário; informar a comunidade; permitir remoção de dados a pedido.
 
+Implementado: `/lfg-apagar-dados` (utilizador ou staff) — ver README.
+
 ## 9. Métricas de sucesso
 
 Pedidos por dia, tempo médio até fechar grupo, % grupos completos, utilizadores ativos, redução de expulsões sem motivo.
+
+Implementado: `create_source` nos lobbies, `filled_at` / `ended_at`, `/lfg-stats` e API/dashboard de métricas por guild.

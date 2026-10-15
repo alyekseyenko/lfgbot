@@ -118,9 +118,7 @@ def week_start_for_date(day: date) -> date:
 
 
 def week_bounds_utc(week_start: date) -> tuple[datetime, datetime]:
-    start_local = datetime(
-        week_start.year, week_start.month, week_start.day, tzinfo=PORTUGAL
-    )
+    start_local = datetime(week_start.year, week_start.month, week_start.day, tzinfo=PORTUGAL)
     end_local = start_local + timedelta(days=7)
     return start_local.astimezone(UTC), end_local.astimezone(UTC)
 

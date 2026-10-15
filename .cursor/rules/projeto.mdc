@@ -46,6 +46,7 @@ backend/
 
 ## Regras de trabalho
 
+- **Docker em dev:** bot, API, Postgres e dashboard correm com `docker compose` na raiz. Não assumir Python/Postgres locais para migrar, testar integração ou reiniciar serviços — usar `docker compose exec app …`, `docker compose restart`, ou `.\scripts\docker-dev.ps1`. O serviço `app` monta `backend/app` e `backend/migrations`; após novas migrações, `docker compose restart app` (o entrypoint corre `alembic upgrade head`). Rebuild da imagem só quando mudar `pyproject.toml`/Dockerfile: `docker compose build app`.
 - Implementa APENAS o passo pedido. Não acrescentes funcionalidades fora do âmbito (perfis, reputação, front-end, moderação) nem ficheiros que não foram pedidos.
 - Se tiveres uma sugestão fora do âmbito, escreve-a no fim da resposta e não a implementes.
 - Mostra o plano de ficheiros antes de escrever código.

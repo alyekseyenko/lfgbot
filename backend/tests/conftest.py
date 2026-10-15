@@ -1,11 +1,30 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.domain_event_session import set_domain_event_bus
+from app.core.events import EventBus
 from app.db.base import Base
 from app.db import models  # noqa: F401
+
+
+@pytest.fixture
+def event_bus() -> EventBus:
+    return EventBus()
+
+
+@pytest.fixture(autouse=True)
+def _wire_domain_event_bus(event_bus: EventBus) -> None:
+    set_domain_event_bus(event_bus)
+
+
+@pytest.fixture(autouse=True)
+async def _drain_domain_event_tasks() -> AsyncIterator[None]:
+    yield
+    await asyncio.sleep(0.05)
 
 
 def _test_database_url() -> str:

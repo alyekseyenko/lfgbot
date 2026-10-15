@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://lfg:lfg@localhost:5432/lfg"
     log_level: str = "INFO"
+    log_json: bool = False
+    sentry_dsn: str = ""
 
     lobby_ttl_minutes: int = 45
     expire_poll_seconds: int = 30
@@ -31,6 +33,14 @@ class Settings(BaseSettings):
 
     panel_sticky_enabled: bool = True
     panel_sticky_cooldown_seconds: float = 30.0
+
+    discord_client_secret: str = ""
+    oauth_redirect_uri: str = "http://localhost:8000/auth/discord/callback"
+    session_secret: str = "change-me-in-production"
+    public_app_url: str = "http://localhost:5173"
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    valorant_catalog_sync_hours: int = 24
 
     @field_validator("discord_guild_id", mode="before")
     @classmethod

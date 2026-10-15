@@ -30,5 +30,13 @@ class SearchBlockedError(LfgError):
     pass
 
 
+class HostRecreateBlockedError(LfgError):
+    pass
+
+
+class PartyCodeInUseError(LfgError):
+    pass
+
+
 class LobbyEditError(LfgError):
     pass

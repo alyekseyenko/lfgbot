@@ -1,0 +1,40 @@
+{
+  "title": "LFG Valorant",
+  "uid": "lfg-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Lobbies criados (rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(lfg_lobbies_created_total[5m])) by (source)",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latência de ack (p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(lfg_interaction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Edições vs eventos de embed",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "lfg_embed_edits_total", "legendFormat": "edits" },
+        { "expr": "lfg_embed_events_total", "legendFormat": "events" }
+      ]
+    }
+  ]
+}

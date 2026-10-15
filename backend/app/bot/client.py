@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.bot.cog_lfg import setup_lfg_cog
 from app.bot.embed_updater import EmbedUpdater
 from app.bot.lfg_panel import ensure_lfg_panels, register_create_panel_view
-from app.bot.views import LobbyView, register_persistent_views
+from app.bot.views import register_persistent_views
 from app.core.config import Settings
 from app.core.events import EventBus
 from app.services import lobbies as lobby_service
+from app.services.guild_config import GuildConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ def create_bot(
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
     embed_updater: EmbedUpdater,
+    guild_config: GuildConfigService,
 ) -> commands.Bot:
     intents = discord.Intents.default()
     intents.guilds = True
@@ -36,9 +38,42 @@ def create_bot(
             return
         bot._lfg_panels_ensured = True
         try:
-            await ensure_lfg_panels(bot, settings, session_factory, event_bus)
+            await ensure_lfg_panels(bot, settings, session_factory, event_bus, guild_config)
         except Exception:
             logger.exception("falha ao garantir painéis LFG — usa /lfg-painel manualmente")
+
+    @bot.event
+    async def on_guild_join(guild: discord.Guild) -> None:
+        logger.info("bot entrou no servidor %s (%s)", guild.name, guild.id)
+        async with session_factory() as session:
+            async with session.begin():
+                await guild_config.upsert_guild(
+                    session,
+                    discord_guild_id=guild.id,
+                    name=guild.name,
+                    bot_present=True,
+                )
+        guild_config.invalidate(guild.id)
+        try:
+            target = discord.Object(id=guild.id)
+            bot.tree.copy_global_to(guild=target)
+            synced = await bot.tree.sync(guild=target)
+            logger.info("synced %s comandos no servidor %s", len(synced), guild.id)
+        except discord.HTTPException:
+            logger.exception("falha ao sincronizar comandos no servidor %s", guild.id)
+
+    @bot.event
+    async def on_guild_remove(guild: discord.Guild) -> None:
+        logger.info("bot removido do servidor %s (%s)", guild.name, guild.id)
+        async with session_factory() as session:
+            async with session.begin():
+                await guild_config.upsert_guild(
+                    session,
+                    discord_guild_id=guild.id,
+                    name=guild.name,
+                    bot_present=False,
+                )
+        guild_config.invalidate(guild.id)
 
     @bot.tree.error
     async def on_app_command_error(
@@ -53,11 +88,16 @@ def create_bot(
 
     @bot.event
     async def setup_hook() -> None:
+        async with session_factory() as session:
+            async with session.begin():
+                await guild_config.seed_from_env(session)
         try:
-            await _reconcile_on_startup(bot, settings, session_factory, event_bus, embed_updater)
+            await _reconcile_on_startup(
+                bot, settings, session_factory, event_bus, embed_updater, guild_config
+            )
         except Exception:
             logger.exception("startup reconcile failed — bot continua, mas verifica a BD")
-        await setup_lfg_cog(bot, settings, session_factory, event_bus)
+        await setup_lfg_cog(bot, settings, session_factory, event_bus, guild_config)
 
         guild_ids = settings.discord_guild_id_list
         tree_cmds = [cmd.name for cmd in bot.tree.walk_commands()]
@@ -89,6 +129,7 @@ async def _reconcile_on_startup(
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
     embed_updater: EmbedUpdater,
+    guild_config: GuildConfigService,
 ) -> None:
     async with session_factory() as session:
         async with session.begin():
@@ -101,9 +142,9 @@ async def _reconcile_on_startup(
         await embed_updater.refresh_now(lobby.id)
 
     register_persistent_views(
-        bot, session_factory, event_bus, [lobby.id for lobby in active]
+        bot, session_factory, event_bus, [lobby.id for lobby in active], guild_config
     )
-    register_create_panel_view(bot, settings, session_factory, event_bus)
+    register_create_panel_view(bot, settings, session_factory, event_bus, guild_config)
 
     for lobby in active:
         await embed_updater.refresh_now(lobby.id)

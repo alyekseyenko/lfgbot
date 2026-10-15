@@ -12,10 +12,7 @@ _MEDALS = ("🥇", "🥈", "🥉")
 
 def _week_range_label(week_start: date) -> str:
     week_end = week_start + timedelta(days=6)
-    return (
-        f"{week_start.day:02d}/{week_start.month:02d}"
-        f" – {week_end.day:02d}/{week_end.month:02d}"
-    )
+    return f"{week_start.day:02d}/{week_start.month:02d} – {week_end.day:02d}/{week_end.month:02d}"
 
 
 def _format_top_list(

@@ -11,11 +11,6 @@ from app.services.lobby_patch import LobbyHostPatch
 from app.services.users import upsert_user
 
 
-@pytest.fixture
-def event_bus() -> EventBus:
-    return EventBus()
-
-
 @pytest.mark.asyncio
 async def test_host_updates_rank_range(session: AsyncSession, event_bus: EventBus) -> None:
     await upsert_user(session, 1001, "Host", rank="Gold")

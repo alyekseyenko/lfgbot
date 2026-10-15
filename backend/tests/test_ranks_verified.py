@@ -8,11 +8,6 @@ from app.services.lobbies import create_lobby, join_lobby
 from app.services.users import upsert_user
 
 
-@pytest.fixture
-def event_bus() -> EventBus:
-    return EventBus()
-
-
 @pytest.mark.asyncio
 async def test_informative_ranks_do_not_block_join(session: AsyncSession, event_bus: EventBus) -> None:
     await upsert_user(session, 1101, "Host", rank="Gold")

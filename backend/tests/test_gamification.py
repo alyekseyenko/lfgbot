@@ -45,11 +45,6 @@ def gamification_on(monkeypatch: pytest.MonkeyPatch) -> Settings:
     return settings
 
 
-@pytest.fixture
-def event_bus() -> EventBus:
-    return EventBus()
-
-
 async def _full_lobby(
     session: AsyncSession,
     event_bus: EventBus,
@@ -115,8 +110,8 @@ def test_format_progress_block_agente_path() -> None:
 
 
 def test_week_start_monday() -> None:
-    tuesday = date(2026, 10, 14)
-    assert week_start_for_date(tuesday) == date(2026, 10, 13)
+    wednesday = date(2026, 10, 14)
+    assert week_start_for_date(wednesday) == date(2026, 10, 12)
 
 
 @pytest.mark.asyncio
@@ -131,6 +126,7 @@ async def test_full_close_awards_host_and_players(
     result = await session.execute(select(func.count()).select_from(LobbyCompletion))
     assert int(result.scalar_one()) == 2
 
+    await session.commit()
     async with session.begin():
         await close_lobby(session, event_bus, lobby_id=lobby.id)
 
@@ -304,9 +300,8 @@ async def test_weekly_top_respects_week_window(
     session: AsyncSession, event_bus: EventBus, gamification_on: Settings
 ) -> None:
     lobby = await _full_lobby(session, event_bus, host_id=4001, player_ids=[4002])
-    week = week_start_for_date(date(2026, 10, 15))
-    start_utc, end_utc = week_bounds_utc(week)
-    award_time = start_utc + timedelta(hours=1)
+    award_time = datetime.now(UTC) - timedelta(minutes=5)
+    week = week_start_for_date(award_time.date())
 
     async with session.begin():
         await record_lobby_completions(session, lobby, now=award_time)
@@ -316,7 +311,7 @@ async def test_weekly_top_respects_week_window(
     assert len(top) == 1
     assert top[0].user_id == 4001
 
-    other_week = week_start_for_date(date(2026, 10, 22))
+    other_week = week - timedelta(days=7)
     async with session.begin():
         empty = await weekly_top_hosts(session, other_week)
     assert empty == []

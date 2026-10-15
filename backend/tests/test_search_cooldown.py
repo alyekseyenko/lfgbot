@@ -7,15 +7,11 @@ from app.core.events import EventBus
 from app.services.errors import SearchBlockedError
 from app.services.lobbies import create_lobby, join_lobby, kick_member_as_host, leave_lobby
 from app.services.search_cooldown import (
+    SearchCooldownPolicy,
     cooldown_duration_for_daily_count,
     format_search_blocked_until,
 )
 from app.services.users import upsert_user
-
-
-@pytest.fixture
-def event_bus() -> EventBus:
-    return EventBus()
 
 
 def test_cooldown_escalation() -> None:
@@ -23,6 +19,23 @@ def test_cooldown_escalation() -> None:
     assert cooldown_duration_for_daily_count(3) == timedelta(minutes=5)
     assert cooldown_duration_for_daily_count(4) == timedelta(minutes=15)
     assert cooldown_duration_for_daily_count(5) == timedelta(hours=12)
+
+
+def test_cooldown_custom_policy() -> None:
+    policy = SearchCooldownPolicy(
+        early_minutes=10,
+        early_max_daily_count=2,
+        mid_minutes=30,
+        severe_hours=6,
+    )
+    assert cooldown_duration_for_daily_count(2, policy) == timedelta(minutes=10)
+    assert cooldown_duration_for_daily_count(3, policy) == timedelta(minutes=30)
+    assert cooldown_duration_for_daily_count(4, policy) == timedelta(hours=6)
+
+
+def test_cooldown_disabled_policy() -> None:
+    policy = SearchCooldownPolicy(enabled=False)
+    assert cooldown_duration_for_daily_count(10, policy) == timedelta(0)
 
 
 def test_format_blocked_message_contains_lisbon() -> None:

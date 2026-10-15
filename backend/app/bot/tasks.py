@@ -22,9 +22,7 @@ async def expiration_loop(
         try:
             async with session_factory() as session:
                 async with session.begin():
-                    expired = await expire_due_lobbies(
-                        session, event_bus, now=datetime.now(UTC)
-                    )
+                    expired = await expire_due_lobbies(session, event_bus, now=datetime.now(UTC))
             for lobby in expired:
                 await embed_updater.refresh_now(lobby.id)
         except Exception:

@@ -1,3 +1,5 @@
+from app.services.lfg_embed_style import LobbyEmbedStyle
+
 from app.bot.lfg_panel import (
     PANEL_EMBED_DESCRIPTION,
     PANEL_EMBED_TITLE,
@@ -14,11 +16,24 @@ from app.bot.lfg_panel import (
 
 def test_panel_embed_describes_current_flow() -> None:
     embed = build_panel_embed()
-    assert embed.title == PANEL_EMBED_TITLE
-    assert embed.description == PANEL_EMBED_DESCRIPTION
+    assert PANEL_EMBED_TITLE in (embed.title or "")
+    assert "🎯" in (embed.title or "")
+    assert PANEL_EMBED_DESCRIPTION in (embed.description or "")
     assert "Vagas e código" in PANEL_EMBED_DESCRIPTION
     assert "dropdown" in PANEL_EMBED_DESCRIPTION
     assert "Publicar" in PANEL_EMBED_DESCRIPTION
+
+
+def test_panel_embed_custom_brand_colour() -> None:
+    style = LobbyEmbedStyle(
+        panel_color="112233",
+        panel_footer_brand="PT Valorant",
+        footer_brand="Outro",
+    )
+    embed = build_panel_embed(style)
+    assert embed.colour.value == 0x112233
+    assert embed.footer is not None
+    assert embed.footer.text == "PT Valorant"
 
 
 def test_parse_panel_slots_valid() -> None:
@@ -65,7 +80,7 @@ def test_rank_select_options_include_none_and_ranks() -> None:
     assert values[0] == RANK_SELECT_NONE
     assert "Gold" in values
     assert "Radiant" in values
-    assert "Unranked" not in values
+    assert "Unranked" in values
 
 
 def test_rank_extras_prompt_highlights_slots_and_code() -> None:

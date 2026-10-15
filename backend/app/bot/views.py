@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.discord_roles import extract_agents_from_member
+from app.bot.host_cooldown import resolve_host_recreate_cooldown
+from app.bot.interaction_obs import track_interaction
 from app.bot.members import upsert_user_from_member
 from app.core.events import EventBus
 from app.db.models import Lobby, User
@@ -20,7 +22,8 @@ from app.services.errors import (
     NotInLobbyError,
     SearchBlockedError,
 )
-from app.services.search_cooldown import format_search_blocked_until
+from app.services.guild_config import GuildConfigService
+from app.services.search_cooldown import SearchCooldownPolicy, format_search_blocked_until
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +56,7 @@ def parse_lobby_id_from_custom_id(custom_id: str) -> UUID | None:
 
 def _join_success_message(lobby: Lobby, party_code: str | None) -> str:
     if party_code and not lobby.party_code_public:
-        return (
-            "Entraste no lobby.\n"
-            f"**Código da party:**\n```{party_code}```"
-        )
+        return f"Entraste no lobby.\n**Código da party:**\n```{party_code}```"
     return "Entraste no lobby."
 
 
@@ -98,9 +98,7 @@ class KickMemberSelect(discord.ui.Select):
             return
         except Exception:
             logger.exception("kick failed in lobby %s", self._lobby_id)
-            await interaction.followup.send(
-                "Não foi possível expulsar o jogador.", ephemeral=True
-            )
+            await interaction.followup.send("Não foi possível expulsar o jogador.", ephemeral=True)
             return
         await interaction.followup.send("Jogador expulso do lobby.", ephemeral=True)
 
@@ -159,26 +157,39 @@ class LobbyView(discord.ui.View):
         self.add_item(close_btn)
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
         self._event_bus: EventBus | None = None
+        self._guild_config: GuildConfigService | None = None
 
-    def bind(self, session_factory: async_sessionmaker[AsyncSession], event_bus: EventBus) -> None:
+    def bind(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        event_bus: EventBus,
+        guild_config: GuildConfigService | None = None,
+    ) -> None:
         self._session_factory = session_factory
         self._event_bus = event_bus
+        self._guild_config = guild_config
 
     async def _join_callback(self, interaction: discord.Interaction) -> None:
-        await self._handle_join(interaction)
+        async with track_interaction(interaction, lobby_id=str(self.lobby_id)):
+            await self._handle_join(interaction)
 
     async def _leave_callback(self, interaction: discord.Interaction) -> None:
-        await self._handle_leave(interaction)
+        async with track_interaction(interaction, lobby_id=str(self.lobby_id)):
+            await self._handle_leave(interaction)
 
     async def _close_callback(self, interaction: discord.Interaction) -> None:
-        await self._handle_close(interaction)
+        async with track_interaction(interaction, lobby_id=str(self.lobby_id)):
+            await self._handle_close(interaction)
 
     async def _kick_callback(self, interaction: discord.Interaction) -> None:
-        await self._handle_kick_prompt(interaction)
+        async with track_interaction(interaction, lobby_id=str(self.lobby_id)):
+            await self._handle_kick_prompt(interaction)
 
     async def _handle_join(self, interaction: discord.Interaction) -> None:
         if self._session_factory is None or self._event_bus is None:
-            await interaction.response.send_message("Bot em arranque. Tenta outra vez.", ephemeral=True)
+            await interaction.response.send_message(
+                "Bot em arranque. Tenta outra vez.", ephemeral=True
+            )
             return
         if interaction.user is None:
             return
@@ -219,7 +230,9 @@ class LobbyView(discord.ui.View):
 
     async def _handle_leave(self, interaction: discord.Interaction) -> None:
         if self._session_factory is None or self._event_bus is None:
-            await interaction.response.send_message("Bot em arranque. Tenta outra vez.", ephemeral=True)
+            await interaction.response.send_message(
+                "Bot em arranque. Tenta outra vez.", ephemeral=True
+            )
             return
         if interaction.user is None:
             return
@@ -233,12 +246,17 @@ class LobbyView(discord.ui.View):
                         )
                         return
                     user = await upsert_user_from_member(session, interaction.user)
+                    policy: SearchCooldownPolicy | None = None
+                    if self._guild_config is not None and interaction.guild is not None:
+                        cfg = await self._guild_config.get_config(session, interaction.guild.id)
+                        policy = cfg.search_cooldown_policy()
                     await lobby_service.leave_lobby(
                         session,
                         self._event_bus,
                         lobby_id=self.lobby_id,
                         user=user,
                         reason="left",
+                        search_cooldown_policy=policy,
                     )
         except NotInLobbyError:
             await interaction.response.send_message("Não estás neste lobby.", ephemeral=True)
@@ -265,7 +283,9 @@ class LobbyView(discord.ui.View):
 
     async def _handle_close(self, interaction: discord.Interaction) -> None:
         if self._session_factory is None or self._event_bus is None:
-            await interaction.response.send_message("Bot em arranque. Tenta outra vez.", ephemeral=True)
+            await interaction.response.send_message(
+                "Bot em arranque. Tenta outra vez.", ephemeral=True
+            )
             return
         if interaction.user is None:
             return
@@ -283,6 +303,19 @@ class LobbyView(discord.ui.View):
             )
             return
 
+        channel = interaction.channel
+        host = interaction.user
+        if channel is None or not isinstance(host, discord.Member):
+            await interaction.response.send_message("Canal inválido.", ephemeral=True)
+            return
+
+        host_recreate_cooldown = await resolve_host_recreate_cooldown(
+            self._guild_config,
+            self._session_factory,
+            host,
+            channel,
+        )
+
         async with self._session_factory() as session:
             async with session.begin():
                 try:
@@ -291,6 +324,7 @@ class LobbyView(discord.ui.View):
                         self._event_bus,
                         lobby_id=self.lobby_id,
                         host_id=interaction.user.id,
+                        host_recreate_cooldown=host_recreate_cooldown,
                     )
                 except LobbyNotJoinableError as exc:
                     await interaction.response.send_message(str(exc), ephemeral=True)
@@ -300,7 +334,9 @@ class LobbyView(discord.ui.View):
 
     async def _handle_kick_prompt(self, interaction: discord.Interaction) -> None:
         if self._session_factory is None or self._event_bus is None:
-            await interaction.response.send_message("Bot em arranque. Tenta outra vez.", ephemeral=True)
+            await interaction.response.send_message(
+                "Bot em arranque. Tenta outra vez.", ephemeral=True
+            )
             return
         if interaction.user is None:
             return
@@ -329,9 +365,7 @@ class LobbyView(discord.ui.View):
             )
             return
 
-        view = KickMemberView(
-            self.lobby_id, self._session_factory, self._event_bus, members
-        )
+        view = KickMemberView(self.lobby_id, self._session_factory, self._event_bus, members)
         await interaction.response.send_message(
             "Escolhe o jogador a expulsar do lobby:",
             view=view,
@@ -360,8 +394,9 @@ def register_persistent_views(
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
     lobby_ids: list[UUID],
+    guild_config: GuildConfigService | None = None,
 ) -> None:
     for lobby_id in lobby_ids:
         view = LobbyView(lobby_id)
-        view.bind(session_factory, event_bus)
+        view.bind(session_factory, event_bus, guild_config)
         bot.add_view(view)

@@ -1,0 +1,35 @@
+# Shared VPS (nginx already on 80/443): bot + Postgres only, API on localhost:8010.
+# Usage: docker compose -f docker-compose.vps-test.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lfg}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-lfg}
+    volumes:
+      - lfg_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lfg} -d ${POSTGRES_DB:-lfg}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lfg}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lfg}
+    ports:
+      - "127.0.0.1:8010:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  lfg_postgres_data:

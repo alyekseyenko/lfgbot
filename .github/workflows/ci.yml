@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lfg
+          POSTGRES_PASSWORD: lfg
+          POSTGRES_DB: lfg_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lfg -d lfg_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend
+        working-directory: backend
+        run: pip install ".[dev]"
+      - name: Ruff
+        working-directory: backend
+        run: |
+          ruff check app/core app/services app/api tests
+          ruff format --check app/core app/services app/api tests
+      - name: Mypy
+        working-directory: backend
+        run: mypy app/core app/services
+      - name: Pytest
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://lfg:lfg@localhost:5432/lfg_test
+        run: pytest --cov=app --cov-report=term-missing -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build

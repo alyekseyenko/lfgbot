@@ -1,0 +1,4 @@
+# Placeholder até à API (fase 3). Firewall: 22, 80, 443.
+:80 {
+	respond /health "ok" 200
+}

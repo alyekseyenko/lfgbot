@@ -9,19 +9,16 @@ from app.db.models import LobbyState
 from app.services.errors import LobbyFullError, NotInLobbyError
 from app.services.errors import LobbyNotJoinableError
 from app.services.lobbies import (
+    close_lobby,
     close_lobby_as_host,
     create_lobby,
     expire_due_lobbies,
     get_host_active_lobby,
+    get_lobby_detail,
     join_lobby,
     leave_lobby,
 )
 from app.services.users import upsert_user
-
-
-@pytest.fixture
-def event_bus() -> EventBus:
-    return EventBus()
 
 
 async def _host(session: AsyncSession, discord_id: int = 1001) -> None:
@@ -283,3 +280,40 @@ async def test_host_no_active_lobby_after_expires_at(
     async with session.begin():
         active = await get_host_active_lobby(session, 80)
     assert active is None
+
+
+@pytest.mark.asyncio
+async def test_concurrent_close_and_expire(
+    session_factory: async_sessionmaker[AsyncSession], event_bus: EventBus
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        async with session.begin():
+            host = await upsert_user(session, 83, "Host83")
+            lobby = await create_lobby(
+                session,
+                event_bus,
+                host=host,
+                mode="Unrated",
+                slots=2,
+                party_code=None,
+                expires_in=timedelta(seconds=0),
+            )
+            lobby.expires_at = now
+        lobby_id = lobby.id
+
+    async def do_close() -> None:
+        async with session_factory() as session:
+            async with session.begin():
+                await close_lobby(session, event_bus, lobby_id=lobby_id, now=now)
+
+    async def do_expire() -> None:
+        async with session_factory() as session:
+            async with session.begin():
+                await expire_due_lobbies(session, event_bus, now=now)
+
+    await asyncio.gather(do_close(), do_expire())
+
+    async with session_factory() as session:
+        final = await get_lobby_detail(session, lobby_id)
+    assert final.state in (LobbyState.closed, LobbyState.expired)

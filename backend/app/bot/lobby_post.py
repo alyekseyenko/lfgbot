@@ -9,11 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.embeds import allowed_mentions_for_roles, build_lobby_embed
 from app.bot.lfg_panel import notify_panel_sticky_after_lobby
+from app.bot.members import fetch_guild_member, upsert_user_from_member
 from app.bot.views import LobbyView
 from app.core.config import Settings
 from app.core.events import EventBus
 from app.services import lobbies as lobby_service
-from app.bot.members import upsert_user_from_member
+from app.services.guild_config import GuildConfigService
+from app.services.lfg_embed_style import lobby_embed_style_from_config
 
 
 async def publish_lobby(
@@ -33,8 +35,17 @@ async def publish_lobby(
     wanted_agents: list[str] | None = None,
     ranks_verified: bool = False,
     reference: discord.Message | None = None,
+    guild_config: GuildConfigService | None = None,
+    create_source: str = "unknown",
 ) -> discord.Message:
-    expires_in = timedelta(minutes=settings.lobby_ttl_minutes)
+    ttl_minutes = settings.lobby_ttl_minutes
+    if guild_config is not None and isinstance(channel, discord.abc.GuildChannel):
+        cfg = await guild_config.get_config_for_factory(session_factory, channel.guild.id)
+        ttl_minutes = cfg.lobby_ttl_minutes
+    expires_in = timedelta(minutes=ttl_minutes)
+    discord_guild_id: int | None = None
+    if isinstance(channel, discord.abc.GuildChannel):
+        discord_guild_id = channel.guild.id
 
     async with session_factory() as session:
         async with session.begin():
@@ -52,14 +63,32 @@ async def publish_lobby(
                 wanted_agents=wanted_agents,
                 ranks_verified=ranks_verified,
                 expires_in=expires_in,
+                discord_guild_id=discord_guild_id,
+                create_source=create_source,
             )
 
     lobby_detail = await _load_lobby(session_factory, lobby.id)
     guild = channel.guild if isinstance(channel, discord.abc.GuildChannel) else None
     thumb = settings.embed_thumbnail_url.strip() or None
-    built = build_lobby_embed(lobby_detail, guild=guild, thumbnail_url=thumb)
+    role_mappings: dict[tuple[str, str], int] | None = None
+    embed_style = None
+    if guild_config is not None and guild is not None:
+        cfg = await guild_config.get_config_for_factory(session_factory, guild.id)
+        role_mappings = cfg.role_mappings
+        embed_style = lobby_embed_style_from_config(cfg)
+    host_member = None
+    if guild is not None:
+        host_member = await fetch_guild_member(guild, host.id)
+    built = build_lobby_embed(
+        lobby_detail,
+        guild=guild,
+        thumbnail_url=thumb,
+        role_mappings=role_mappings,
+        embed_style=embed_style,
+        host_member=host_member,
+    )
     view = LobbyView(lobby.id)
-    view.bind(session_factory, event_bus)
+    view.bind(session_factory, event_bus, guild_config)
     view.refresh_buttons("open", slots)
 
     message = await channel.send(
@@ -77,7 +106,7 @@ async def publish_lobby(
 
     if isinstance(channel, discord.TextChannel):
         await notify_panel_sticky_after_lobby(
-            bot, settings, session_factory, event_bus, channel
+            bot, settings, session_factory, event_bus, channel, guild_config
         )
 
     return message

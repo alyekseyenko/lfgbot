@@ -87,9 +87,7 @@ async def sync_awarded_users_for_lobby(
         try:
             await sync_member_lfg_roles(session_factory, member)
         except discord.Forbidden:
-            logger.warning(
-                "sem permissão para roles LFG em %s (user %s)", guild.id, discord_id
-            )
+            logger.warning("sem permissão para roles LFG em %s (user %s)", guild.id, discord_id)
         except discord.HTTPException:
             logger.exception("falha ao sincronizar roles para %s", discord_id)
 

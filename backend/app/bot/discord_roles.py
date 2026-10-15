@@ -29,6 +29,7 @@ __all__ = [
     "rank_tier",
     "agents_labels_for_guild",
     "member_tags_line",
+    "member_tags_line_plain",
     "rank_label_for_guild",
 ]
 
@@ -99,12 +100,14 @@ def extract_wanted_agents_from_roles(roles: list[discord.Role]) -> list[str]:
 
 
 def rank_role_media(
-    guild: discord.Guild | None, rank: str | None
+    guild: discord.Guild | None,
+    rank: str | None,
+    role_mappings: dict[tuple[str, str], int] | None = None,
 ) -> tuple[str | None, str | None]:
     """URL do ícone da role de rank e emoji unicode da role (se existir)."""
     if guild is None or not rank:
         return None, None
-    role = find_rank_role(guild, rank)
+    role = find_rank_role(guild, rank, role_mappings=role_mappings)
     if role is None:
         return None, None
     icon_url: str | None = None
@@ -113,10 +116,21 @@ def rank_role_media(
     return icon_url, role.unicode_emoji
 
 
-def find_rank_role(guild: discord.Guild, rank: str) -> discord.Role | None:
+def find_rank_role(
+    guild: discord.Guild,
+    rank: str,
+    *,
+    role_mappings: dict[tuple[str, str], int] | None = None,
+) -> discord.Role | None:
     target = normalize_rank_name(rank)
     if target is None:
         return None
+    if role_mappings:
+        mapped_id = role_mappings.get(("valorant_rank", target))
+        if mapped_id is not None:
+            mapped = guild.get_role(mapped_id)
+            if mapped is not None:
+                return mapped
     target_lower = target.lower()
     for role in guild.roles:
         if normalize_rank_name(role.name) == target:
@@ -128,9 +142,20 @@ def find_rank_role(guild: discord.Guild, rank: str) -> discord.Role | None:
     return None
 
 
-def find_agent_role(guild: discord.Guild, agent: str) -> discord.Role | None:
+def find_agent_role(
+    guild: discord.Guild,
+    agent: str,
+    *,
+    role_mappings: dict[tuple[str, str], int] | None = None,
+) -> discord.Role | None:
     if agent not in AGENT_ROLES:
         return None
+    if role_mappings:
+        mapped_id = role_mappings.get(("agent_role", agent))
+        if mapped_id is not None:
+            mapped = guild.get_role(mapped_id)
+            if mapped is not None:
+                return mapped
     for role in guild.roles:
         if role.name == agent:
             return role
@@ -147,13 +172,14 @@ def rank_label_for_guild(
     mention_ids: list[int],
     *,
     with_role_emoji: bool = True,
+    role_mappings: dict[tuple[str, str], int] | None = None,
 ) -> str | None:
     if not rank:
         return None
     label: str | None = None
     emoji: str | None = None
     if guild is not None:
-        role = find_rank_role(guild, rank)
+        role = find_rank_role(guild, rank, role_mappings=role_mappings)
         if role is not None:
             mention_ids.append(role.id)
             label = role.mention
@@ -169,11 +195,13 @@ def agent_label_for_guild(
     guild: discord.Guild | None,
     agent: str | None,
     mention_ids: list[int],
+    *,
+    role_mappings: dict[tuple[str, str], int] | None = None,
 ) -> str | None:
     if not agent:
         return None
     if guild is not None:
-        role = find_agent_role(guild, agent)
+        role = find_agent_role(guild, agent, role_mappings=role_mappings)
         if role is not None:
             mention_ids.append(role.id)
             return role.mention
@@ -184,13 +212,46 @@ def agents_labels_for_guild(
     guild: discord.Guild | None,
     agents: list[str],
     mention_ids: list[int],
+    *,
+    role_mappings: dict[tuple[str, str], int] | None = None,
 ) -> str:
     labels: list[str] = []
     for agent in agents:
-        label = agent_label_for_guild(guild, agent, mention_ids)
+        label = agent_label_for_guild(guild, agent, mention_ids, role_mappings=role_mappings)
         if label:
             labels.append(label)
     return " · ".join(labels)
+
+
+def member_tags_line_plain(
+    guild: discord.Guild | None,
+    member: discord.Member | None,
+    stored_rank: str | None,
+) -> str:
+    """Rank/agente ao lado do host: texto + emoji, sem @role (convive com <@user> na embed)."""
+    rank = stored_rank
+    agents: list[str] = []
+    if member is not None:
+        live_rank, _single = extract_from_member(member)
+        if live_rank:
+            rank = live_rank
+        agents = extract_agents_from_member(member)
+
+    tags: list[str] = []
+    if rank:
+        _icon, emoji = rank_role_media(guild, rank)
+        label = format_rank(rank)
+        if emoji:
+            tags.append(f"{emoji} {label}")
+        elif label and label != "Sem rank":
+            tags.append(label)
+    if agents:
+        tags.append(" · ".join(agents))
+    elif member is not None:
+        _, fallback_agent = extract_from_member(member)
+        if fallback_agent:
+            tags.append(fallback_agent)
+    return " · ".join(tags)
 
 
 def member_tags_line(
@@ -198,6 +259,8 @@ def member_tags_line(
     member: discord.Member | None,
     stored_rank: str | None,
     mention_ids: list[int],
+    *,
+    role_mappings: dict[tuple[str, str], int] | None = None,
 ) -> str:
     rank = stored_rank
     agents: list[str] = []
@@ -208,14 +271,18 @@ def member_tags_line(
         agents = extract_agents_from_member(member)
 
     tags: list[str] = []
-    rank_label = rank_label_for_guild(guild, rank, mention_ids)
+    rank_label = rank_label_for_guild(guild, rank, mention_ids, role_mappings=role_mappings)
     if rank_label and rank_label != "Sem rank":
         tags.append(rank_label)
     if agents:
-        tags.append(agents_labels_for_guild(guild, agents, mention_ids))
+        tags.append(
+            agents_labels_for_guild(guild, agents, mention_ids, role_mappings=role_mappings)
+        )
     elif member is not None:
         _, fallback_agent = extract_from_member(member)
-        agent_label = agent_label_for_guild(guild, fallback_agent, mention_ids)
+        agent_label = agent_label_for_guild(
+            guild, fallback_agent, mention_ids, role_mappings=role_mappings
+        )
         if agent_label:
             tags.append(agent_label)
     return " · ".join(tags)
