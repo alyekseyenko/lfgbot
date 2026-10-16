@@ -142,6 +142,18 @@ def rank_role_media(
     return icon_url, role.unicode_emoji
 
 
+def _guild_role_by_id(guild: discord.Guild, role_id: int) -> discord.Role | None:
+    get_role = getattr(guild, "get_role", None)
+    if callable(get_role):
+        mapped = get_role(role_id)
+        if mapped is not None:
+            return mapped
+    for role in getattr(guild, "roles", ()) or ():
+        if getattr(role, "id", None) == role_id:
+            return role
+    return None
+
+
 def find_rank_role(
     guild: discord.Guild,
     rank: str,
@@ -154,7 +166,7 @@ def find_rank_role(
     if role_mappings:
         mapped_id = role_mappings.get(("valorant_rank", target))
         if mapped_id is not None:
-            mapped = guild.get_role(mapped_id)
+            mapped = _guild_role_by_id(guild, mapped_id)
             if mapped is not None:
                 return mapped
     target_lower = target.lower()

@@ -82,6 +82,7 @@ def test_simple_embed_immune_title_and_thumbnail() -> None:
         members=[],
     )
     style = LobbyEmbedStyle(
+        decorative=False,
         immune_embed_enabled=True,
         immune_embed_tiers=(ImmuneEmbedTier(label="Apoiante VIP", color="FF73FA", role_ids=(10,)),),
     )

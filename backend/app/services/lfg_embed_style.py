@@ -499,7 +499,7 @@ def _highlight_from_role(
     fallback_colour_hex: str,
 ) -> ImmuneHighlightContext:
     colour = role.colour
-    if colour.value == 0:
+    if colour is None or colour.value == 0:
         colour = discord_colour_from_hex(
             parse_embed_hex_color(fallback_colour_hex, default=DEFAULT_IMMUNE_EMBED_COLOR)
         )

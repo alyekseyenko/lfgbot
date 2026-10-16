@@ -33,6 +33,15 @@ DEFAULT_LOBBY_SIMPLE_HINT = "Junta-te no jogo com o código — sem lista nesta 
 DEFAULT_HOST_NO_RANK_FOOTER = "Jogador sem rank verificado"
 
 
+def _guild_member(guild: discord.Guild | None, user_id: int) -> discord.Member | None:
+    if guild is None:
+        return None
+    fetch = getattr(guild, "get_member", None)
+    if not callable(fetch):
+        return None
+    return fetch(user_id)
+
+
 @dataclass(frozen=True, slots=True)
 class _HostFooterAccent:
     icon_url: str | None
@@ -67,7 +76,9 @@ def _host_display_label(
 ) -> str:
     """Nome visível no embed (menções <@id> no embed não resolvem em servidores grandes)."""
     if host_member is not None:
-        return f"**{host_member.display_name}**"
+        display = getattr(host_member, "display_name", None) or getattr(host_member, "name", None)
+        if display:
+            return f"**{display}**"
     name = (host_user.name or "").strip()
     if name:
         return f"**{name}**"
@@ -168,7 +179,7 @@ def _player_line(
     mention_ids: list[int],
     role_mappings: dict[tuple[str, str], int] | None = None,
 ) -> str:
-    member = guild.get_member(user.discord_id) if guild is not None else None
+    member = _guild_member(guild, user.discord_id)
     tags = member_tags_line(guild, member, user.rank, mention_ids, role_mappings=role_mappings)
     if tags:
         return f"• **{user.name}** — {tags}"
@@ -216,8 +227,8 @@ def _build_simple_lobby_embed(
     inactive = _lobby_is_inactive(lobby)
     mode_colour = _mode_colour(lobby.mode, embed_style)
     full_colour, inactive_colour = state_colours_from_style(embed_style)
-    if host_member is None and guild is not None:
-        host_member = guild.get_member(lobby.host.discord_id)
+    if host_member is None:
+        host_member = _guild_member(guild, lobby.host.discord_id)
 
     colour, immune_highlight = resolve_lobby_embed_colour(
         lobby,
@@ -263,11 +274,16 @@ def _build_simple_lobby_embed(
     if embed_style is not None and embed_style.show_author:
         prefix = embed_custom_text(embed_style, "author_prefix", DEFAULT_AUTHOR_PREFIX)
         author_name = (
-            host_member.display_name if host_member is not None else lobby.host.name
+            getattr(host_member, "display_name", None)
+            or getattr(host_member, "name", None)
+            or lobby.host.name
+            if host_member is not None
+            else lobby.host.name
         )
+        avatar = getattr(host_member, "display_avatar", None) if host_member is not None else None
         embed.set_author(
             name=_strike_main_text(f"{prefix} · {author_name}", inactive),
-            icon_url=host_member.display_avatar.url if host_member is not None else None,
+            icon_url=getattr(avatar, "url", None),
         )
     embed.description = description
 
@@ -375,8 +391,8 @@ def build_lobby_embed(
     decorative = embed_style.decorative if embed_style is not None else True
     mode_colour = _mode_colour(lobby.mode, embed_style)
     full_colour, inactive_colour = state_colours_from_style(embed_style)
-    if host_member is None and guild is not None:
-        host_member = guild.get_member(lobby.host.discord_id)
+    if host_member is None:
+        host_member = _guild_member(guild, lobby.host.discord_id)
 
     colour, immune_highlight = resolve_lobby_embed_colour(
         lobby,

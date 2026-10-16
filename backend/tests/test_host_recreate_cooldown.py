@@ -10,6 +10,7 @@ from app.core.events import EventBus
 from app.db.models import User
 from app.services.errors import HostRecreateBlockedError
 from app.services.guild_config import GuildRuntimeConfig
+from app.services.lfg_embed_style import LfgEmbedSimpleSettings
 from app.services.host_recreate_cooldown import (
     apply_host_recreate_cooldown,
     assert_can_host_create,
@@ -59,6 +60,7 @@ def test_guild_runtime_immune_shorter_cooldown() -> None:
         lfg_panel_banner_url=None,
         lfg_panel_decorative=True,
         lfg_embed_thumbnail_url=None,
+        lfg_embed_simple=LfgEmbedSimpleSettings(),
         immune_embed_enabled=True,
         immune_embed_color="FFD700",
         immune_embed_label="VIP",
