@@ -7,7 +7,7 @@ import discord
 from discord.ext import commands
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.bot.embeds import allowed_mentions_for_roles, build_lobby_embed
+from app.bot.embeds import allowed_mentions_for_lobby, build_lobby_embed
 from app.bot.lfg_panel import notify_panel_sticky_after_lobby
 from app.bot.members import fetch_guild_member, upsert_user_from_member
 from app.bot.views import make_lobby_view
@@ -99,7 +99,7 @@ async def publish_lobby(
         embed=built.embed,
         view=view,
         reference=reference,
-        allowed_mentions=allowed_mentions_for_roles(built.mention_role_ids),
+        allowed_mentions=allowed_mentions_for_lobby(built),
     )
 
     async with session_factory() as session:

@@ -1,10 +1,16 @@
 from app.services.lfg_embed_style import LobbyEmbedStyle
 
+from collections import Counter
+
+import discord
+
 from app.bot.lfg_panel import (
+    CreateGroupPanelView,
     PANEL_EMBED_DESCRIPTION,
     PANEL_EMBED_TITLE,
     RANK_SELECT_NONE,
     RANKS_MODE_VERIFIED,
+    SimpleRankPublishView,
     build_panel_embed,
     is_panel_message,
     parse_optional_panel_rank,
@@ -15,6 +21,14 @@ from app.bot.lfg_panel import (
     rank_select_options_with_default,
     ranks_mode_select_options,
 )
+
+
+def _select_count_per_row(view: discord.ui.View) -> dict[int, int]:
+    counts: Counter[int] = Counter()
+    for item in view.children:
+        if isinstance(item, discord.ui.Select):
+            counts[item.row or 0] += 1
+    return dict(counts)
 
 
 def test_panel_embed_describes_current_flow() -> None:
@@ -108,3 +122,10 @@ def test_rank_extras_prompt_highlights_slots_and_code() -> None:
 def test_ranks_mode_select_includes_verified() -> None:
     values = [opt.value for opt in ranks_mode_select_options()]
     assert RANKS_MODE_VERIFIED in values
+
+
+def test_simple_rank_publish_view_at_most_one_select_per_row() -> None:
+    panel = CreateGroupPanelView()
+    view = SimpleRankPublishView(panel, slots=2, party_code="ABC123", user_id=1)
+    per_row = _select_count_per_row(view)
+    assert all(count <= 1 for count in per_row.values())

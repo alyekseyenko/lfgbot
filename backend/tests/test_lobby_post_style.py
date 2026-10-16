@@ -1,9 +1,10 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
-from app.bot.embeds import build_lobby_embed
+from app.bot.embeds import allowed_mentions_for_lobby, build_lobby_embed
 from app.core.events import EventBus
 from app.db.models import Lobby, LobbyState, User
 from app.services.errors import LobbyNotJoinableError
@@ -41,12 +42,58 @@ def test_simple_embed_omits_players_field() -> None:
         members=[],
     )
     built = build_lobby_embed(lobby)
+    assert built.mention_user_ids == [1]
+    mentions = allowed_mentions_for_lobby(built)
+    assert len(mentions.users) == 1
+    assert mentions.users[0].id == 1
     names = [f.name for f in built.embed.fields]
     assert "Jogadores" not in " ".join(names)
     assert any("Código" in (n or "") for n in names)
     rank_fields = [f for f in built.embed.fields if "Rank" in (f.name or "")]
     assert rank_fields
     assert "Gold" in rank_fields[0].value
+
+
+def test_simple_embed_rank_field_uses_role_mentions() -> None:
+    diamond = SimpleNamespace(
+        name="Diamond",
+        id=501,
+        mention="<@&501>",
+        unicode_emoji=None,
+        icon=None,
+    )
+    ascendant = SimpleNamespace(
+        name="Ascendant",
+        id=502,
+        mention="<@&502>",
+        unicode_emoji=None,
+        icon=None,
+    )
+    guild = SimpleNamespace(roles=[diamond, ascendant])
+    host = User(discord_id=99, name="Host", rank="Diamond")
+    lobby = Lobby(
+        id=uuid4(),
+        host_id=99,
+        mode="Competitivo",
+        slots=1,
+        party_code="QZK657",
+        party_code_public=True,
+        min_rank="Diamond",
+        max_rank="Ascendant",
+        post_style=POST_STYLE_SIMPLE,
+        state=LobbyState.open,
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        host=host,
+        members=[],
+    )
+    built = build_lobby_embed(lobby, guild=guild)
+    rank_fields = [f for f in built.embed.fields if "Rank" in (f.name or "")]
+    assert rank_fields
+    assert "<@&501>" in rank_fields[0].value
+    assert "<@&502>" in rank_fields[0].value
+    assert built.mention_role_ids == [501, 502]
+    mentions = allowed_mentions_for_lobby(built)
+    assert {r.id for r in mentions.roles} == {501, 502}
 
 
 @pytest.mark.asyncio

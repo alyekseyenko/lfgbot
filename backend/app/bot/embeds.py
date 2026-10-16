@@ -40,6 +40,7 @@ COLOUR_INACTIVE = discord.Colour(0x4A4E5A)
 class LobbyEmbedBuild:
     embed: discord.Embed
     mention_role_ids: list[int]
+    mention_user_ids: list[int]
 
 
 def _active_members(lobby: Lobby) -> list[LobbyMember]:
@@ -271,8 +272,12 @@ def _build_simple_lobby_embed(
         footer_text = f"{brand} · #{short_id} · {expires_line} · Fecha com o botão Fechar"
     embed.set_footer(text=footer_text, icon_url=footer_icon)
 
-    unique_ids = list(dict.fromkeys(mention_ids))
-    return LobbyEmbedBuild(embed=embed, mention_role_ids=unique_ids)
+    unique_role_ids = list(dict.fromkeys(mention_ids))
+    return LobbyEmbedBuild(
+        embed=embed,
+        mention_role_ids=unique_role_ids,
+        mention_user_ids=[lobby.host.discord_id],
+    )
 
 
 def build_lobby_embed(
@@ -562,15 +567,31 @@ def build_lobby_embed(
     ):
         embed.set_image(url=embed_style.banner_url)
 
-    unique_ids = list(dict.fromkeys(mention_ids))
-    return LobbyEmbedBuild(embed=embed, mention_role_ids=unique_ids)
+    unique_role_ids = list(dict.fromkeys(mention_ids))
+    return LobbyEmbedBuild(
+        embed=embed,
+        mention_role_ids=unique_role_ids,
+        mention_user_ids=[lobby.host.discord_id],
+    )
 
 
 def lobby_view_enabled(lobby: Lobby) -> bool:
     return lobby.state in (LobbyState.open, LobbyState.full)
 
 
-def allowed_mentions_for_roles(role_ids: list[int]) -> discord.AllowedMentions:
-    """Roles podem notificar; menções de utilizador na embed aparecem sem ping (users=[])."""
+def allowed_mentions_for_roles(
+    role_ids: list[int],
+    *,
+    user_ids: list[int] | None = None,
+) -> discord.AllowedMentions:
+    """Só menções listadas notificam; utilizadores/roles têm de estar explícitos."""
     roles = [discord.Object(id=rid) for rid in role_ids]
-    return discord.AllowedMentions(everyone=False, users=[], roles=roles, replied_user=False)
+    users = [discord.Object(id=uid) for uid in dict.fromkeys(user_ids or ())]
+    return discord.AllowedMentions(everyone=False, users=users, roles=roles, replied_user=False)
+
+
+def allowed_mentions_for_lobby(built: LobbyEmbedBuild) -> discord.AllowedMentions:
+    return allowed_mentions_for_roles(
+        built.mention_role_ids,
+        user_ids=built.mention_user_ids,
+    )

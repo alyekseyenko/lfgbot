@@ -671,6 +671,7 @@ class SimpleRankPublishView(discord.ui.View):
         quick_btn.callback = self._on_publish_quick
         self.add_item(quick_btn)
 
+        # Discord: no máximo 1 select por action row.
         self._min_select = discord.ui.Select(
             placeholder="Rank mínimo (opcional)",
             options=rank_select_options_with_default(recalled_min),
@@ -686,7 +687,7 @@ class SimpleRankPublishView(discord.ui.View):
             options=rank_select_options_with_default(recalled_max),
             min_values=1,
             max_values=1,
-            row=1,
+            row=2,
         )
         self._max_select.callback = self._on_max_rank
         self.add_item(self._max_select)
@@ -694,7 +695,7 @@ class SimpleRankPublishView(discord.ui.View):
         publish_btn = discord.ui.Button(
             label="Publicar com estes ranks",
             style=discord.ButtonStyle.success,
-            row=1,
+            row=3,
         )
         publish_btn.callback = self._on_publish
         self.add_item(publish_btn)
@@ -771,33 +772,41 @@ class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
         self._panel = panel
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        slots = parse_panel_slots(self.vagas.value)
-        if slots is None:
+        try:
+            slots = parse_panel_slots(self.vagas.value)
+            if slots is None:
+                await interaction.response.send_message(
+                    "Vagas inválidas — escolhe um número de **1** a **4**.",
+                    ephemeral=True,
+                )
+                return
+            party_code = self.codigo.value.strip().upper()
+            if not party_code:
+                await interaction.response.send_message(
+                    "Indica o **código da party**.",
+                    ephemeral=True,
+                )
+                return
+            if interaction.user is None:
+                await interaction.response.send_message("Só no servidor.", ephemeral=True)
+                return
             await interaction.response.send_message(
-                "Vagas inválidas — escolhe um número de **1** a **4**.",
+                "**Publicar já** = qualquer rank. Ou ajusta os ranks e **Publicar com estes ranks**.",
+                view=SimpleRankPublishView(
+                    self._panel,
+                    slots=slots,
+                    party_code=party_code,
+                    user_id=interaction.user.id,
+                ),
                 ephemeral=True,
             )
-            return
-        party_code = self.codigo.value.strip().upper()
-        if not party_code:
-            await interaction.response.send_message(
-                "Indica o **código da party**.",
-                ephemeral=True,
-            )
-            return
-        if interaction.user is None:
-            await interaction.response.send_message("Só no servidor.", ephemeral=True)
-            return
-        await interaction.response.send_message(
-            "**Publicar já** = qualquer rank. Ou ajusta os ranks e **Publicar com estes ranks**.",
-            view=SimpleRankPublishView(
-                self._panel,
-                slots=slots,
-                party_code=party_code,
-                user_id=interaction.user.id,
-            ),
-            ephemeral=True,
-        )
+        except Exception:
+            logger.exception("simple modal submit failed for user %s", interaction.user and interaction.user.id)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "Não foi possível abrir o passo seguinte. Tenta outra vez.",
+                    ephemeral=True,
+                )
 
 
 class CreateGroupModal(discord.ui.Modal, title="Criar pedido LFG"):

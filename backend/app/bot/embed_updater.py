@@ -7,7 +7,7 @@ import discord
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.embeds import (
-    allowed_mentions_for_roles,
+    allowed_mentions_for_lobby,
     build_lobby_embed,
     lobby_view_enabled,
 )
@@ -214,7 +214,7 @@ class EmbedUpdater:
             await message.edit(
                 embed=built.embed,
                 view=view,
-                allowed_mentions=allowed_mentions_for_roles(built.mention_role_ids),
+                allowed_mentions=allowed_mentions_for_lobby(built),
             )
             embed_edits_total.inc()
             return True
@@ -267,7 +267,7 @@ class EmbedUpdater:
             await message.edit(
                 embed=built.embed,
                 view=None,
-                allowed_mentions=allowed_mentions_for_roles(built.mention_role_ids),
+                allowed_mentions=allowed_mentions_for_lobby(built),
             )
             embed_edits_total.inc()
             return True
