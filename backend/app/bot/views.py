@@ -367,6 +367,7 @@ class LobbyView(discord.ui.View):
             host,
             channel,
         )
+        cooldown_secs = int(host_recreate_cooldown.total_seconds())
 
         async with self._session_factory() as session:
             async with session.begin():
@@ -382,7 +383,14 @@ class LobbyView(discord.ui.View):
                     await interaction.response.send_message(str(exc), ephemeral=True)
                     return
 
-        await interaction.response.send_message("Grupo fechado.", ephemeral=True)
+        if cooldown_secs <= 0:
+            close_note = "Grupo fechado. Podes criar outro pedido já."
+        else:
+            close_note = (
+                f"Grupo fechado. Podes criar outro pedido em **{cooldown_secs}** s "
+                f"(tempo definido pelas tuas roles ao fechar)."
+            )
+        await interaction.response.send_message(close_note, ephemeral=True)
 
     async def _handle_kick_prompt(self, interaction: discord.Interaction) -> None:
         if self._session_factory is None or self._event_bus is None:

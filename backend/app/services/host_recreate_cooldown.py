@@ -25,8 +25,11 @@ def assert_can_host_create(user: User, now: datetime) -> None:
 
     if user.host_create_blocked_until is not None and user.host_create_blocked_until > now:
         raise HostRecreateBlockedError(
-            "Acabaste de fechar um pedido — espera um pouco antes de criar outro. "
-            f"{format_host_recreate_blocked_until(user.host_create_blocked_until)}"
+            "Acabaste de fechar um pedido — espera antes de criar outro. "
+            f"{format_host_recreate_blocked_until(user.host_create_blocked_until)} "
+            "Se tens uma **role isenta**, ela tem de estar num **nível de prioridade** "
+            "no admin (Moderação) e **guardada**; o tempo curto só se aplica ao fechar "
+            "com essa role no Discord."
         )
 
 

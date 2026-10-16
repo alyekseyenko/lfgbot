@@ -1598,6 +1598,14 @@ export function AdminApp() {
               fechar pedido). Se o host tiver roles em vários níveis, aplica-se o nível
               com número mais baixo.
             </p>
+            <p className="hint">
+              <strong>Cooldown:</strong> ao carregar em <strong>Fechar</strong>, o bot
+              vê as tuas roles no Discord <em>nesse momento</em>. Se tiveres uma role
+              listada abaixo em «Adicionar role», aplica-se a espera curta (isentos);
+              senão, a espera longa (resto). Clica <strong>Guardar alterações</strong>{" "}
+              depois de editar os níveis. Um bloqueio de 5 minutos de um fecho anterior
+              não muda sozinho — só o próximo fecho define o tempo novo.
+            </p>
             <div className="grid two">
               <label>
                 Espera após fechar pedido (resto dos membros, segundos)
