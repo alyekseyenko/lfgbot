@@ -4,7 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.bot.embeds import allowed_mentions_for_lobby, build_lobby_embed
+from app.bot.embeds import (
+    DEFAULT_HOST_NO_RANK_FOOTER,
+    allowed_mentions_for_lobby,
+    build_lobby_embed,
+)
 from app.core.events import EventBus
 from app.db.models import Lobby, LobbyState, User
 from app.services.errors import LobbyNotJoinableError
@@ -89,6 +93,61 @@ def test_simple_embed_immune_title_and_thumbnail() -> None:
     assert built.embed.title == "Apoiante VIP"
     assert built.embed.thumbnail is not None
     assert built.embed.thumbnail.url == "https://cdn.example/icon.png"
+
+
+def test_simple_embed_footer_host_rank_icon_without_immune() -> None:
+    gold_role = SimpleNamespace(
+        name="Gold",
+        id=102,
+        mention="<@&102>",
+        unicode_emoji=None,
+        icon=SimpleNamespace(url="https://cdn.example/gold.png"),
+    )
+    guild = SimpleNamespace(roles=[gold_role])
+    host_member = SimpleNamespace(roles=[gold_role])
+    host = User(discord_id=5, name="Host", rank="Silver")
+    lobby = Lobby(
+        id=uuid4(),
+        host_id=5,
+        mode="Competitivo",
+        slots=2,
+        party_code="X",
+        party_code_public=True,
+        post_style=POST_STYLE_SIMPLE,
+        state=LobbyState.open,
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        host=host,
+        members=[],
+    )
+    mappings = {("valorant_rank", "Gold"): 102}
+    built = build_lobby_embed(
+        lobby, guild=guild, host_member=host_member, role_mappings=mappings
+    )
+    assert built.embed.footer is not None
+    assert built.embed.footer.icon_url == "https://cdn.example/gold.png"
+    assert DEFAULT_HOST_NO_RANK_FOOTER not in (built.embed.footer.text or "")
+
+
+def test_simple_embed_footer_no_rank_on_discord() -> None:
+    host_member = SimpleNamespace(roles=[])
+    host = User(discord_id=6, name="Host", rank="Gold")
+    lobby = Lobby(
+        id=uuid4(),
+        host_id=6,
+        mode="Competitivo",
+        slots=1,
+        party_code="Y",
+        party_code_public=True,
+        post_style=POST_STYLE_SIMPLE,
+        state=LobbyState.open,
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        host=host,
+        members=[],
+    )
+    built = build_lobby_embed(lobby, host_member=host_member)
+    assert built.embed.footer is not None
+    assert DEFAULT_HOST_NO_RANK_FOOTER in (built.embed.footer.text or "")
+    assert built.embed.footer.icon_url is None
 
 
 def test_simple_embed_rank_field_uses_role_mentions() -> None:

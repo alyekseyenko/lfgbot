@@ -5,6 +5,7 @@ import discord
 
 from app.bot.discord_roles import (
     agents_labels_for_guild,
+    extract_valorant_rank_from_member,
     member_tags_line,
     rank_label_for_guild,
     rank_role_media,
@@ -19,6 +20,7 @@ from app.services.lfg_embed_style import (
     DEFAULT_LOBBY_EMPTY_PLAYERS,
     DEFAULT_LOBBY_INACTIVE_LEAD,
     DEFAULT_LOBBY_PRIVATE_CODE_HINT,
+    ImmuneHighlightContext,
     LobbyEmbedStyle,
     embed_custom_text,
     mode_colour_for_lobby,
@@ -28,6 +30,44 @@ from app.services.lfg_embed_style import (
 
 PORTUGAL = ZoneInfo("Europe/Lisbon")
 DEFAULT_LOBBY_SIMPLE_HINT = "Junta-te no jogo com o código — sem lista nesta mensagem."
+DEFAULT_HOST_NO_RANK_FOOTER = "Jogador sem rank verificado"
+
+
+@dataclass(frozen=True, slots=True)
+class _HostFooterAccent:
+    icon_url: str | None
+    note: str | None
+
+
+def _host_footer_accent(
+    guild: discord.Guild | None,
+    host_member: discord.Member | None,
+    immune_highlight: ImmuneHighlightContext | None,
+    *,
+    role_mappings: dict[tuple[str, str], int] | None,
+    inactive: bool,
+) -> _HostFooterAccent:
+    """Rodapé: ícone da role isenta ou rank do host (mapeamento admin → role Discord)."""
+    if inactive:
+        return _HostFooterAccent(None, None)
+    if immune_highlight is not None:
+        return _HostFooterAccent(immune_highlight.role_icon_url, None)
+    if host_member is None:
+        return _HostFooterAccent(None, DEFAULT_HOST_NO_RANK_FOOTER)
+    live_rank = extract_valorant_rank_from_member(host_member, role_mappings=role_mappings)
+    if live_rank is None:
+        return _HostFooterAccent(None, DEFAULT_HOST_NO_RANK_FOOTER)
+    icon_url, _emoji = rank_role_media(guild, live_rank, role_mappings=role_mappings)
+    return _HostFooterAccent(icon_url, None)
+
+
+def _footer_text_and_icon(
+    footer_text: str,
+    accent: _HostFooterAccent,
+) -> tuple[str, str | None]:
+    if accent.note:
+        footer_text = f"{footer_text} · {accent.note}"
+    return footer_text, accent.icon_url
 
 # Fallbacks quando não há estilo de guild (ex. testes).
 COLOUR_COMPETITIVE = discord.Colour(0xFF4655)
@@ -249,7 +289,6 @@ def _build_simple_lobby_embed(
         inline=True,
     )
 
-    footer_icon: str | None = None
     show_thumb = embed_style is None or embed_style.show_rank_thumbnail
     fallback_thumb = (
         (embed_style.lobby_thumbnail_url if embed_style is not None else None) or thumbnail_url
@@ -265,8 +304,6 @@ def _build_simple_lobby_embed(
             embed.set_thumbnail(url=max_icon)
         elif fallback_thumb:
             embed.set_thumbnail(url=fallback_thumb)
-        if lobby.min_rank and lobby.max_rank and max_icon:
-            footer_icon = max_icon
 
     short_id = str(lobby.id).split("-")[0]
     brand = (
@@ -279,6 +316,14 @@ def _build_simple_lobby_embed(
         footer_text = f"{brand} · #{short_id} · Pedido encerrado"
     else:
         footer_text = f"{brand} · #{short_id} · {expires_line} · Fecha com o botão Fechar"
+    accent = _host_footer_accent(
+        guild,
+        host_member,
+        immune_highlight,
+        role_mappings=role_mappings,
+        inactive=inactive,
+    )
+    footer_text, footer_icon = _footer_text_and_icon(footer_text, accent)
     embed.set_footer(text=footer_text, icon_url=footer_icon)
 
     unique_role_ids = list(dict.fromkeys(mention_ids))
@@ -456,7 +501,6 @@ def build_lobby_embed(
             inline=False,
         )
 
-    footer_icon: str | None = None
     show_thumb = embed_style is None or embed_style.show_rank_thumbnail
     fallback_thumb = (
         (embed_style.lobby_thumbnail_url if embed_style is not None else None) or thumbnail_url
@@ -468,7 +512,6 @@ def build_lobby_embed(
         max_icon, _max_emoji = rank_role_media(guild, lobby.max_rank, role_mappings=role_mappings)
         if lobby.min_rank and lobby.max_rank and min_icon and max_icon:
             embed.set_thumbnail(url=min_icon)
-            footer_icon = max_icon
         elif lobby.min_rank and min_icon:
             embed.set_thumbnail(url=min_icon)
         elif lobby.max_rank and max_icon:
@@ -564,6 +607,14 @@ def build_lobby_embed(
     )
     suffix = embed_custom_text(embed_style, "footer_suffix", DEFAULT_FOOTER_SUFFIX)
     footer_text = f"{brand} · #{short_id} {suffix}".strip()
+    accent = _host_footer_accent(
+        guild,
+        host_member,
+        immune_highlight,
+        role_mappings=role_mappings,
+        inactive=inactive,
+    )
+    footer_text, footer_icon = _footer_text_and_icon(footer_text, accent)
     embed.set_footer(text=footer_text, icon_url=footer_icon)
 
     banner_on = embed_style is None or embed_style.banner_on_lobby

@@ -19,6 +19,7 @@ __all__ = [
     "VALORANT_RANKS",
     "extract_agents_from_member",
     "extract_from_member",
+    "extract_valorant_rank_from_member",
     "extract_min_rank_from_roles",
     "extract_min_rank_from_text",
     "extract_rank_bounds_from_roles",
@@ -65,6 +66,31 @@ def extract_from_member(member: discord.Member) -> tuple[str | None, str | None]
                     break
 
     return best_rank, agent_role
+
+
+def extract_valorant_rank_from_member(
+    member: discord.Member,
+    role_mappings: dict[tuple[str, str], int] | None = None,
+) -> str | None:
+    """Rank do membro via mapeamento admin (valorant_rank → role Discord), senão por nome da role."""
+    if role_mappings:
+        member_ids = {role.id for role in member.roles}
+        best_rank: str | None = None
+        best_tier = -1
+        for (kind, rank_name), role_id in role_mappings.items():
+            if kind != "valorant_rank" or role_id not in member_ids:
+                continue
+            normalized = normalize_rank_name(rank_name)
+            if normalized is None:
+                continue
+            tier = rank_tier(normalized)
+            if tier > best_tier:
+                best_tier = tier
+                best_rank = normalized
+        if best_rank is not None:
+            return best_rank
+    rank, _agent = extract_from_member(member)
+    return rank
 
 
 def extract_min_rank_from_roles(roles: list[discord.Role]) -> str | None:
