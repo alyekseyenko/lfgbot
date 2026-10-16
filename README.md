@@ -37,9 +37,11 @@ The `+` counts **bot-tracked** activity on top of the legacy baseline. Staff can
 
 | Before (manual chat) | After (LFG bot) |
 |----------------------|-----------------|
-| Stacked `ZOV825 +2 @GOLD` messages | Embed with slots, ranks, party code, **Join** / **Leave** buttons |
+| Stacked `ZOV825 +2 @GOLD` messages | Structured embeds: party code, slots, ranks, host |
 | No shared state | PostgreSQL is source of truth; Discord is the UI |
 | Stale requests mixed with active ones | **Open** / **Full** / **Closed** / **Expired** with auto-expiry |
+
+**Post styles:** **Simple** (default) — code in-channel, join in-game, host-only **Close** button. **Detailed** — **Join** / **Leave** list on Discord (legacy flow).
 
 Screenshots: [docs/images/](docs/images/).
 
@@ -47,15 +49,31 @@ Screenshots: [docs/images/](docs/images/).
 
 ## Features
 
-- **`/procurar`** — create LFG (slots, party code, rank range, agents, public/private code, verified ranks).
-- **«Criar grupo» panel** — same options as `/procurar` (sticky message + button; `/lfg-painel` to republish).
-- **Guide channel** — configurable `#guide` embed (admin + `/lfg-guia`).
-- **Auto-format** (optional) — `ABC123 +2` style messages → embeds; many servers disable chat and use panel/slash only.
-- **Persistent buttons** — Join / Leave survive bot restarts.
-- **`/fechar`**, **`/editar`**, **`/perfil`**, **`/ranking`**, **`/lfg-stats`**, **`/lfg-apagar-dados`** (GDPR).
-- **Moderation** — private-party leave cooldowns, host recreate delay, VIP embed tiers, audit log channel.
-- Optional **gamification** — completions, leaderboard.
-- **Web admin** — channels, embeds, metrics, Valorant catalog sync (`frontend/` + OAuth).
+### Creating requests
+
+- **`/procurar`** — defaults to **simple** (`slots` + `party code`). Use `type: Detailed` for Join/Leave on Discord (rank range, agents, public/private code, verified ranks).
+- **«Criar grupo» panel** — **Simple** (recommended) or **Detailed**; sticky message + button (`/lfg-painel` to republish).
+- **Guide channel** — short PT embed for members (editable in admin → General; `/lfg-guia` to publish).
+
+### Simple vs detailed embeds
+
+| | **Simple** | **Detailed** |
+|--|------------|--------------|
+| Discord buttons | Host **Close** only | **Join** / **Leave** (+ host tools) |
+| Party code | Shown in the channel embed | Public in embed or **DM after Join** if private |
+| Ranks | Optional min/max on the embed (informational) | Enforced via mapped Discord rank roles |
+| VIP / priority roles | Highlight styling (title/color/thumbnail) when enabled | Same tier styling when enabled |
+| Host in embed | Display name (not a broken `@mention` in embed body) | Same |
+| Footer accent | Mapped Valorant rank role icon, or “unverified rank” copy | Full member list + standard footer rules |
+
+### Ops and community
+
+- **Auto-format** (optional) — `ABC123 +2` chat → embeds; many guilds use panel/slash only.
+- **Persistent views** — buttons survive bot restarts (`custom_id`).
+- **Commands** — `/fechar`, `/editar`, `/perfil`, `/ranking`, `/lfg-stats`, `/lfg-apagar-dados` (GDPR).
+- **Moderation** — leave cooldowns on **private** parties (voluntary leave only); **host recreate delay** after close (~5 min default, seconds for configured priority roles — role is read **at close time**); audit log channel.
+- Optional **gamification** — completions, weekly leaderboard.
+- **Web admin** (`/admin`, OAuth) — channels, embed styling (simple + detailed), moderation tiers, **Valorant rank/agent catalog** sync, role mappings, metrics, player-facing site (`/`, `/me`).
 
 ---
 

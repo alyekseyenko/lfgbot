@@ -4,59 +4,46 @@ GUIDE_EMBED_TITLE = "Guia — LFG Valorant"
 GUIDE_BODY_MAX_LEN = 3900
 
 # Texto por defeito do canal de guia (editável no dashboard → Geral).
-DEFAULT_GUIDE_BODY = """**O essencial**
-**Simples:** publica o **código** no canal — entras no jogo e convidas pelo código (só o host usa **Fechar**).
-**Detalhado:** lista no Discord com **Entrar** / **Sair** (como antes).
-Sair ou ser **removido do pedido** não te expulsa do Discord — só sais desse grupo.
+DEFAULT_GUIDE_BODY = """**Modos**
+• **Simples** — código no canal; entras no jogo pelo código.
+  No Discord só **Fechar** (sem Entrar/Sair).
+• **Detalhado** — lista no Discord com **Entrar** / **Sair**.
 
-━━━━━━━━━━━━━━━━━━━━
-**Criar pedido — painel (recomendado)**
-1. **Criar grupo** → **Simples** (padrão) ou **Detalhado**.
-2. **Simples:** vagas + código → **Publicar já** (qualquer rank) ou escolhe ranks mín./máx.
-3. **Detalhado:** ranks, agentes, código público/privado, etc.
-O formulário é só para ti; o pedido fica visível no canal.
+Sair ou ser removido de um pedido **não** te expulsa do servidor.
 
-**Criar pedido — `/procurar`**
-Por defeito é **simples** (`vagas` + `codigo`). Para **Entrar**/**Sair** no Discord, usa `tipo: Detalhado` e as opções extra (ranks verificados, código privado, agentes). O modo (Competitivo / Unrated) segue o canal.
+**Criar pedido**
+• Painel **Criar grupo** → **Simples** (recomendado) ou **Detalhado**.
+  Simples: vagas + código → **Publicar já** ou ranks mín./máx. no embed.
+  Detalhado: ranks validados, agentes, código público/privado, etc.
+• **`/procurar`** — simples por defeito. Lista no Discord: `tipo: Detalhado`.
+  O modo (Comp/Unrated) segue o canal.
 
-━━━━━━━━━━━━━━━━━━━━
-**Nos pedidos (botões)**
-• **Entrar** / **Sair** — gerir a tua presença na lista.
-• Código **privado** — depois de **Entrar**, o bot pode enviar-te o código por mensagem.
-• O **host** pode **expulsar** alguém do pedido (botão do host) — não é ban do servidor.
-• Pedidos **expiram** sozinhos (tempo máximo definido pela staff).
-• **`/fechar`** — o host fecha o pedido ativo.
-• **`/editar`** — alterar vagas, ranks, código, visibilidade ou agentes (com pedido aberto).
+**No pedido simples**
+• Host, vagas, código (e ranks no embed, se definiste).
+• Roles de prioridade podem dar **destaque** (cor/título).
+• Rodapé: ícone do rank se tiveres role Discord **mapeada** pela staff; senão, sem rank verificado.
 
-━━━━━━━━━━━━━━━━━━━━
-**Tempos de espera (anti-abuso)**
-Contam no **fuso de Lisboa**; reinício diário onde aplicável.
+**No pedido detalhado**
+• **Entrar** / **Sair** · código **privado** por DM após entrar.
+• Host pode **remover** alguém (não é ban do servidor).
+• **`/fechar`** · **`/editar`** · expira sozinho.
 
-**Party com código privado**
-Se **saíres voluntariamente** (botão **Sair**) de um pedido com código **privado**, ficás **temporariamente sem poder** criar ou entrar em novos pedidos. **Ser expulso pelo host não conta** para esta penalização.
-• 1.ª–3.ª saída do dia → cerca de **5 min** sem novo pedido/entrada.
-• 4.ª saída → cerca de **15 min**.
-• 5.ª e seguintes no mesmo dia → cerca de **12 h**.
-(Os moderadores podem alterar estes valores; o bot diz **até quando** estás bloqueado.)
+**Esperas** (fuso Lisboa; valores podem mudar)
+• **Depois de fechar** o teu pedido: ~**5 min** para criar outro, ou **segundos** com role
+  de prioridade (Membro/VIP, etc.). Conta a role que tens **ao fechar** — ganhar prioridade
+  depois não cancela a espera em curso.
+• **Sair** de pedido com código **privado** (por ti): bloqueio temporário a criar/entrar.
+  **Expulsão pelo host não conta.**
 
-**Depois de fechar o teu pedido (`/fechar` ou grupo cheio/fechado)**
-Espera habitual para **criar outro pedido**: cerca de **5 min** (resto dos membros). Com roles como **Membro**, **Confiança** ou outros níveis de destaque → espera **muito menor** (segundos) e o teu pedido pode sair em **destaque** no canal (cor/título diferentes).
+**Ranks**
+Detalhado: o bot valida pelas roles mapeadas no dashboard.
+Simples: ranks no embed são para quem lê o canal.
 
-━━━━━━━━━━━━━━━━━━━━
-**Roles da comunidade**
-• **Membro / Confiança / VIP** (nomes conforme o servidor) — menos espera ao fechar pedidos, embed em **destaque** quando publicas, e benefícios de moderação automática ligados a essas roles.
-• **Ranks verificados** — com `/procurar` ou painel, o bot valida rank pelas roles Discord mapeadas; entra só quem cumpre o intervalo pedido.
+**Mais**
+• **`/perfil`** · **`/ranking`** (se ativo) · **`/lfg-apagar-dados`** (RGPD).
 
-**Gamificação** (se estiver ativa)
-• **`/perfil`** — nível, grupos completos, **expulsões recebidas** no LFG.
-• **`/ranking`** — leaderboard semanal.
-
-**Privacidade**
-• **`/lfg-apagar-dados`** — pedir remoção dos teus dados LFG (RGPD).
-
-━━━━━━━━━━━━━━━━━━━━
 **Chat `ABC123 +2`**
-Por agora **não está ativo** — usa o painel **Criar grupo** ou **`/procurar`**."""
+Desligado — usa o painel ou **`/procurar`**."""
 
 
 def normalize_guide_body(raw: str | None) -> str | None:
