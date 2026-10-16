@@ -33,7 +33,7 @@ export function RoleSearchSelect({ roles, value, onChange, placeholder }: Props)
   }, []);
 
   return (
-    <div className="role-search" ref={rootRef}>
+    <div className={`role-search${open ? " role-search--open" : ""}`} ref={rootRef}>
       <button
         type="button"
         className="role-search-trigger"
@@ -133,7 +133,10 @@ export function RoleMultiSearchSelect({ roles, value, onChange }: MultiProps) {
   };
 
   return (
-    <div className="role-search role-multi" ref={rootRef}>
+    <div
+      className={`role-search role-multi${open ? " role-search--open" : ""}`}
+      ref={rootRef}
+    >
       <div className="role-chips">
         {selectedRoles.length === 0 && (
           <span className="role-chips-empty">Nenhuma role selecionada.</span>

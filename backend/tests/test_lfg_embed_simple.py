@@ -80,4 +80,4 @@ def test_simple_lobby_embed_style_from_config() -> None:
     assert style.decorative is True
     assert style.competitive_color == "112233"
     assert style.banner_on_lobby is False
-    assert style.immune_embed_enabled is False
+    assert style.immune_embed_enabled is True

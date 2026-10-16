@@ -8,6 +8,7 @@ from app.bot.embeds import allowed_mentions_for_lobby, build_lobby_embed
 from app.core.events import EventBus
 from app.db.models import Lobby, LobbyState, User
 from app.services.errors import LobbyNotJoinableError
+from app.services.lfg_embed_style import ImmuneEmbedTier, LobbyEmbedStyle
 from app.services.lobby_post_style import (
     POST_STYLE_INTERACTIVE,
     POST_STYLE_SIMPLE,
@@ -52,6 +53,42 @@ def test_simple_embed_omits_players_field() -> None:
     rank_fields = [f for f in built.embed.fields if "Rank" in (f.name or "")]
     assert rank_fields
     assert "Gold" in rank_fields[0].value
+
+
+def test_simple_embed_immune_title_and_thumbnail() -> None:
+    booster = SimpleNamespace(
+        id=10,
+        position=5,
+        name="Booster",
+        colour=None,
+        icon=SimpleNamespace(url="https://cdn.example/icon.png"),
+        unicode_emoji=None,
+    )
+    host_member = SimpleNamespace(roles=[booster])
+    host = User(discord_id=1, name="Host", rank="Gold")
+    lobby = Lobby(
+        id=uuid4(),
+        host_id=1,
+        mode="Competitivo",
+        slots=2,
+        party_code="ABC",
+        party_code_public=True,
+        post_style=POST_STYLE_SIMPLE,
+        state=LobbyState.open,
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        host=host,
+        members=[],
+    )
+    style = LobbyEmbedStyle(
+        immune_embed_enabled=True,
+        immune_embed_tiers=(
+            ImmuneEmbedTier(label="Apoiante VIP", color="FF73FA", role_ids=(10,)),
+        ),
+    )
+    built = build_lobby_embed(lobby, host_member=host_member, embed_style=style)
+    assert built.embed.title == "Apoiante VIP"
+    assert built.embed.thumbnail is not None
+    assert built.embed.thumbnail.url == "https://cdn.example/icon.png"
 
 
 def test_simple_embed_rank_field_uses_role_mentions() -> None:

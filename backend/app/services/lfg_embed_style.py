@@ -334,7 +334,7 @@ def simple_lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmb
         panel_decorative=bool(config.lfg_panel_decorative),
         lobby_thumbnail_url=(simple.lobby_thumbnail_url or "").strip() or None,
         immune_role_ids=config.immune_role_ids,
-        immune_embed_enabled=False,
+        immune_embed_enabled=bool(config.immune_embed_enabled),
         immune_embed_color=config.immune_embed_color,
         immune_embed_label=config.immune_embed_label,
         immune_embed_tiers=config.immune_embed_tiers,

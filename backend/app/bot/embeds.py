@@ -166,7 +166,7 @@ def _build_simple_lobby_embed(
     if host_member is None and guild is not None:
         host_member = guild.get_member(lobby.host.discord_id)
 
-    colour, _immune = resolve_lobby_embed_colour(
+    colour, immune_highlight = resolve_lobby_embed_colour(
         lobby,
         guild,
         embed_style,
@@ -176,10 +176,17 @@ def _build_simple_lobby_embed(
         host_member=host_member,
     )
     expires_local = lobby.expires_at.astimezone(PORTUGAL)
-    title = _strike_main_text(
-        _mode_title_prefix(lobby.mode, decorative),
-        inactive,
-    )
+    if immune_highlight is not None and not inactive:
+        banner = immune_highlight.label.strip() or immune_highlight.role_name
+        title = _strike_main_text(
+            f"⭐ {banner.upper()}" if decorative else banner,
+            inactive,
+        )
+    else:
+        title = _strike_main_text(
+            _mode_title_prefix(lobby.mode, decorative),
+            inactive,
+        )
     host_mention = f"<@{lobby.host.discord_id}>"
     description = _strike_main_text(host_mention, inactive)
     if inactive:
@@ -247,7 +254,9 @@ def _build_simple_lobby_embed(
     fallback_thumb = (
         (embed_style.lobby_thumbnail_url if embed_style is not None else None) or thumbnail_url
     )
-    if show_thumb:
+    if immune_highlight is not None and immune_highlight.role_icon_url and not inactive:
+        embed.set_thumbnail(url=immune_highlight.role_icon_url)
+    elif show_thumb:
         min_icon, _ = rank_role_media(guild, lobby.min_rank, role_mappings=role_mappings)
         max_icon, _ = rank_role_media(guild, lobby.max_rank, role_mappings=role_mappings)
         if lobby.min_rank and min_icon:
