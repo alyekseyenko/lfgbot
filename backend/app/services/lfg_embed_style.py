@@ -56,7 +56,21 @@ LFG_EMBED_TEXT_LIMITS: dict[str, int] = {
     "field_agents": 256,
     "field_players": 256,
     "field_party_code": 256,
+    "lobby_simple_hint": 512,
 }
+
+SIMPLE_EMBED_TEXT_KEYS: frozenset[str] = frozenset(
+    {
+        "lobby_inactive_lead",
+        "lobby_simple_hint",
+        "author_prefix",
+        "footer_suffix",
+        "field_slots",
+        "field_expires",
+        "field_ranks",
+        "field_party_code",
+    }
+)
 
 DEFAULT_PANEL_LEAD = "**Procura team?**"
 DEFAULT_PANEL_CTA = ""
@@ -198,6 +212,141 @@ def embed_custom_text(style: LobbyEmbedStyle | None, key: str, default: str) -> 
         return default
     custom = style.custom_texts.get(key, "").strip()
     return custom if custom else default
+
+
+@dataclass(frozen=True, slots=True)
+class LfgEmbedSimpleSettings:
+    color_source: str = "min_rank"
+    competitive_color: str = DEFAULT_COMPETITIVE_COLOR
+    unrated_color: str = DEFAULT_UNRATED_COLOR
+    inactive_color: str = DEFAULT_INACTIVE_COLOR
+    decorative: bool = False
+    footer_brand: str | None = None
+    custom_texts: dict[str, str] = field(default_factory=dict)
+    show_author: bool = False
+    show_timestamp: bool = False
+    show_rank_thumbnail: bool = True
+    lobby_thumbnail_url: str | None = None
+
+
+def normalize_lfg_embed_simple_custom_texts(raw: Any) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key in SIMPLE_EMBED_TEXT_KEYS:
+        limit = LFG_EMBED_TEXT_LIMITS.get(key, 256)
+        value = raw.get(key)
+        if not isinstance(value, str):
+            continue
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        out[key] = cleaned[:limit]
+    return out
+
+
+def normalize_lfg_embed_simple(raw: Any, *, fallback_footer_brand: str) -> LfgEmbedSimpleSettings:
+    data = raw if isinstance(raw, dict) else {}
+    color_source = data.get("color_source", "min_rank")
+    if color_source not in LFG_EMBED_COLOR_SOURCES:
+        color_source = "min_rank"
+    footer_raw = data.get("footer_brand")
+    footer_brand: str | None
+    if isinstance(footer_raw, str) and footer_raw.strip():
+        footer_brand = footer_raw.strip()[:64]
+    else:
+        footer_brand = None
+    thumb_raw = data.get("lobby_thumbnail_url")
+    thumb = thumb_raw.strip()[:2048] if isinstance(thumb_raw, str) and thumb_raw.strip() else None
+    texts_raw = data.get("custom_texts", data.get("lfg_embed_custom_texts"))
+    custom_texts = normalize_lfg_embed_simple_custom_texts(texts_raw)
+    return LfgEmbedSimpleSettings(
+        color_source=color_source,
+        competitive_color=parse_embed_hex_color(
+            data.get("competitive_color"), default=DEFAULT_COMPETITIVE_COLOR
+        ),
+        unrated_color=parse_embed_hex_color(
+            data.get("unrated_color"), default=DEFAULT_UNRATED_COLOR
+        ),
+        inactive_color=parse_embed_hex_color(
+            data.get("inactive_color"), default=DEFAULT_INACTIVE_COLOR
+        ),
+        decorative=bool(data.get("decorative", False)),
+        footer_brand=footer_brand,
+        custom_texts=custom_texts,
+        show_author=bool(data.get("show_author", False)),
+        show_timestamp=bool(data.get("show_timestamp", False)),
+        show_rank_thumbnail=bool(data.get("show_rank_thumbnail", True)),
+        lobby_thumbnail_url=thumb,
+    )
+
+
+def lfg_embed_simple_to_storage(settings: LfgEmbedSimpleSettings) -> dict[str, object]:
+    out: dict[str, object] = {
+        "color_source": settings.color_source,
+        "competitive_color": settings.competitive_color,
+        "unrated_color": settings.unrated_color,
+        "inactive_color": settings.inactive_color,
+        "decorative": settings.decorative,
+        "show_author": settings.show_author,
+        "show_timestamp": settings.show_timestamp,
+        "show_rank_thumbnail": settings.show_rank_thumbnail,
+        "custom_texts": dict(settings.custom_texts),
+    }
+    if settings.footer_brand:
+        out["footer_brand"] = settings.footer_brand
+    if settings.lobby_thumbnail_url:
+        out["lobby_thumbnail_url"] = settings.lobby_thumbnail_url
+    return out
+
+
+def simple_lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmbedStyle:
+    simple = config.lfg_embed_simple
+    brand = (simple.footer_brand or config.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND).strip()[
+        :64
+    ]
+    return LobbyEmbedStyle(
+        color_source=simple.color_source,
+        rank_embed_colors=dict(config.rank_embed_colors),
+        competitive_color=parse_embed_hex_color(
+            simple.competitive_color, default=DEFAULT_COMPETITIVE_COLOR
+        ),
+        unrated_color=parse_embed_hex_color(simple.unrated_color, default=DEFAULT_UNRATED_COLOR),
+        full_color=parse_embed_hex_color(
+            config.lfg_embed_full_color, default=DEFAULT_FULL_COLOR
+        ),
+        inactive_color=parse_embed_hex_color(
+            simple.inactive_color, default=DEFAULT_INACTIVE_COLOR
+        ),
+        decorative=simple.decorative,
+        footer_brand=brand or DEFAULT_FOOTER_BRAND,
+        banner_url=None,
+        custom_texts=dict(simple.custom_texts),
+        show_author=simple.show_author,
+        show_timestamp=simple.show_timestamp,
+        show_rank_thumbnail=simple.show_rank_thumbnail,
+        banner_on_panel=config.lfg_embed_banner_on_panel,
+        banner_on_lobby=False,
+        panel_thumbnail_url=(config.lfg_panel_thumbnail_url or "").strip() or None,
+        panel_color=parse_embed_hex_color(config.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR),
+        panel_footer_brand=(config.lfg_panel_footer_brand or "").strip()[:64] or None,
+        panel_banner_url=(config.lfg_panel_banner_url or "").strip() or None,
+        panel_decorative=bool(config.lfg_panel_decorative),
+        lobby_thumbnail_url=(simple.lobby_thumbnail_url or "").strip() or None,
+        immune_role_ids=config.immune_role_ids,
+        immune_embed_enabled=False,
+        immune_embed_color=config.immune_embed_color,
+        immune_embed_label=config.immune_embed_label,
+        immune_embed_tiers=config.immune_embed_tiers,
+    )
+
+
+def lobby_embed_style_for_post(config: GuildRuntimeConfig, post_style: str | None) -> LobbyEmbedStyle:
+    from app.services.lobby_post_style import is_simple_post_style
+
+    if is_simple_post_style(post_style):
+        return simple_lobby_embed_style_from_config(config)
+    return lobby_embed_style_from_config(config)
 
 
 def lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmbedStyle:

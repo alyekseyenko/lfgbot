@@ -1,4 +1,48 @@
+import type { LfgEmbedSimpleSettings } from "./embedAdminConfig";
+
 const jsonHeaders = { "Content-Type": "application/json" };
+
+const COLOR_SOURCES = new Set(["mode", "host_rank", "min_rank", "max_rank"]);
+
+function normalizeLfgEmbedSimple(raw: unknown): LfgEmbedSimpleSettings {
+  const o =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const texts =
+    o.custom_texts && typeof o.custom_texts === "object" && !Array.isArray(o.custom_texts)
+      ? (o.custom_texts as Record<string, string>)
+      : {};
+  const colorSource = o.color_source;
+  return {
+    color_source:
+      typeof colorSource === "string" && COLOR_SOURCES.has(colorSource)
+        ? (colorSource as LfgEmbedSimpleSettings["color_source"])
+        : undefined,
+    competitive_color:
+      typeof o.competitive_color === "string" ? o.competitive_color : undefined,
+    unrated_color: typeof o.unrated_color === "string" ? o.unrated_color : undefined,
+    inactive_color: typeof o.inactive_color === "string" ? o.inactive_color : undefined,
+    decorative: typeof o.decorative === "boolean" ? o.decorative : undefined,
+    footer_brand:
+      typeof o.footer_brand === "string"
+        ? o.footer_brand
+        : o.footer_brand === null
+          ? null
+          : undefined,
+    custom_texts: { ...texts },
+    show_author: typeof o.show_author === "boolean" ? o.show_author : undefined,
+    show_timestamp: typeof o.show_timestamp === "boolean" ? o.show_timestamp : undefined,
+    show_rank_thumbnail:
+      typeof o.show_rank_thumbnail === "boolean" ? o.show_rank_thumbnail : undefined,
+    lobby_thumbnail_url:
+      typeof o.lobby_thumbnail_url === "string"
+        ? o.lobby_thumbnail_url
+        : o.lobby_thumbnail_url === null
+          ? null
+          : undefined,
+  };
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "include", ...init });
@@ -67,6 +111,7 @@ export type GuildSettings = {
   lfg_panel_banner_url: string | null;
   lfg_panel_decorative: boolean;
   lfg_embed_thumbnail_url: string | null;
+  lfg_embed_simple: LfgEmbedSimpleSettings;
   immune_embed_enabled: boolean;
   immune_embed_color: string;
   immune_embed_label: string;
@@ -248,6 +293,7 @@ export function normalizeGuildSettings(s: Partial<GuildSettings>): GuildSettings
     lfg_panel_banner_url: (s.lfg_panel_banner_url ?? "").trim() || null,
     lfg_panel_decorative: s.lfg_panel_decorative ?? true,
     lfg_embed_thumbnail_url: (s.lfg_embed_thumbnail_url ?? "").trim() || null,
+    lfg_embed_simple: normalizeLfgEmbedSimple(s.lfg_embed_simple),
     immune_embed_enabled: s.immune_embed_enabled ?? true,
     immune_embed_color: s.immune_embed_color ?? "FFD700",
     immune_embed_label: s.immune_embed_label ?? "Pedido em destaque",

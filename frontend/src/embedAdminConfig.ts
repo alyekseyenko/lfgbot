@@ -10,6 +10,50 @@ export type EmbedTab = "painel" | "pedidos" | "destaque";
 
 export type EmbedPedidosTab = "cores" | "textos" | "midia";
 
+export type EmbedPedidosMode = "simples" | "detalhado";
+
+export const EMBED_PEDIDOS_MODE_TABS: {
+  id: EmbedPedidosMode;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: "simples",
+    label: "Modo simples",
+    hint: "Código, vagas, rank — só Fechar",
+  },
+  {
+    id: "detalhado",
+    label: "Modo detalhado",
+    hint: "Entrar/Sair, agentes, lista de jogadores",
+  },
+];
+
+export type LfgEmbedSimpleSettings = {
+  color_source?: "mode" | "host_rank" | "min_rank" | "max_rank";
+  competitive_color?: string;
+  unrated_color?: string;
+  inactive_color?: string;
+  decorative?: boolean;
+  footer_brand?: string | null;
+  custom_texts?: Record<string, string>;
+  show_author?: boolean;
+  show_timestamp?: boolean;
+  show_rank_thumbnail?: boolean;
+  lobby_thumbnail_url?: string | null;
+};
+
+const SIMPLE_EMBED_TEXT_KEYS = new Set([
+  "lobby_inactive_lead",
+  "lobby_simple_hint",
+  "author_prefix",
+  "footer_suffix",
+  "field_slots",
+  "field_expires",
+  "field_ranks",
+  "field_party_code",
+]);
+
 export const ADMIN_SECTIONS: { id: AdminSection; label: string; hint: string }[] = [
   { id: "geral", label: "Geral", hint: "Canais, opções e auditoria" },
   { id: "embeds", label: "Embeds LFG", hint: "Cores, textos e multimédia" },
@@ -53,6 +97,7 @@ export const LFG_EMBED_TEXT_DEFAULTS: Record<string, string> = {
   lobby_inactive_lead: "**Este grupo já não está ativo.**",
   lobby_empty_players: "_Ninguém na lista — **Entrar** para te juntares._",
   lobby_private_code_hint: "_Oculto — carrega em **Entrar** para receber o código._",
+  lobby_simple_hint: "Junta-te no jogo com o código.",
   author_prefix: "Host",
   footer_suffix: "· Expira à hora indicada (Lisboa)",
   field_slots: "Vagas",
@@ -168,6 +213,14 @@ export const EMBED_TEXT_FIELDS: EmbedTextFieldDef[] = [
     group: "painel",
   },
   {
+    key: "lobby_simple_hint",
+    label: "Nota sob o host (modo simples)",
+    max: 512,
+    multiline: true,
+    group: "pedido",
+    hint: "Deixa vazio para omitir a linha.",
+  },
+  {
     key: "lobby_cta_open",
     label: "Convite a usar os botões (pedido aberto)",
     max: 1024,
@@ -252,3 +305,17 @@ export const EMBED_TEXT_FIELDS: EmbedTextFieldDef[] = [
     group: "campos",
   },
 ];
+
+export function pedidosEmbedTextFields(mode: EmbedPedidosMode): EmbedTextFieldDef[] {
+  if (mode === "detalhado") {
+    return EMBED_TEXT_FIELDS.filter(
+      (f) => f.group !== "painel" && f.key !== "lobby_simple_hint",
+    );
+  }
+  return EMBED_TEXT_FIELDS.filter((f) => SIMPLE_EMBED_TEXT_KEYS.has(f.key));
+}
+
+export function pedidosEmbedTextSections(mode: EmbedPedidosMode) {
+  const keys = new Set(pedidosEmbedTextFields(mode).map((f) => f.group));
+  return EMBED_TEXT_SECTIONS.filter((s) => keys.has(s.id));
+}

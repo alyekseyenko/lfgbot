@@ -137,6 +137,9 @@ class GuildSettings(Base):
         Boolean, nullable=False, server_default="true"
     )
     lfg_embed_thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lfg_embed_simple: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
     immune_embed_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )

@@ -56,6 +56,7 @@ class GuildSettingsOut(BaseModel):
     lfg_panel_banner_url: str | None = None
     lfg_panel_decorative: bool = True
     lfg_embed_thumbnail_url: str | None = None
+    lfg_embed_simple: dict[str, object] = Field(default_factory=dict)
     immune_embed_enabled: bool = True
     immune_embed_color: str = "FFD700"
     immune_embed_label: str = "Pedido em destaque"
@@ -106,6 +107,7 @@ class GuildSettingsPatch(BaseModel):
     lfg_panel_banner_url: str | None = None
     lfg_panel_decorative: bool | None = None
     lfg_embed_thumbnail_url: str | None = None
+    lfg_embed_simple: dict[str, object] | None = None
     immune_embed_enabled: bool | None = None
     immune_embed_color: str | None = None
     immune_embed_label: str | None = None

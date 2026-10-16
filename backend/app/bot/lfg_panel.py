@@ -609,6 +609,85 @@ class PanelPostStyleView(discord.ui.View):
         await interaction.response.send_modal(CreateGroupModal(self._panel))
 
 
+class SimpleRankPublishView(discord.ui.View):
+    """Pedido simples: rank mín./máx. (como no detalhado) e publicar."""
+
+    def __init__(
+        self,
+        panel: CreateGroupPanelView,
+        *,
+        slots: int,
+        party_code: str,
+        user_id: int,
+    ) -> None:
+        super().__init__(timeout=180)
+        self._panel = panel
+        self._slots = slots
+        self._party_code = party_code
+        self._user_id = user_id
+        self._check = _PanelExtrasUserCheck(user_id)
+        self._min_rank: str | None = None
+        self._max_rank: str | None = None
+
+        self._min_select = discord.ui.Select(
+            placeholder="Rank mínimo (opcional)",
+            options=rank_select_options(),
+            min_values=1,
+            max_values=1,
+        )
+        self._min_select.callback = self._on_min_rank
+        self.add_item(self._min_select)
+
+        self._max_select = discord.ui.Select(
+            placeholder="Rank máximo (opcional)",
+            options=rank_select_options(),
+            min_values=1,
+            max_values=1,
+        )
+        self._max_select.callback = self._on_max_rank
+        self.add_item(self._max_select)
+
+        publish_btn = discord.ui.Button(label="Publicar", style=discord.ButtonStyle.success)
+        publish_btn.callback = self._on_publish
+        self.add_item(publish_btn)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await self._check.interaction_check(interaction)
+
+    async def _on_min_rank(self, interaction: discord.Interaction) -> None:
+        chosen = self._min_select.values[0] if self._min_select.values else RANK_SELECT_NONE
+        self._min_rank = rank_from_select_value(chosen)
+        await interaction.response.defer()
+
+    async def _on_max_rank(self, interaction: discord.Interaction) -> None:
+        chosen = self._max_select.values[0] if self._max_select.values else RANK_SELECT_NONE
+        self._max_rank = rank_from_select_value(chosen)
+        await interaction.response.defer()
+
+    async def _on_publish(self, interaction: discord.Interaction) -> None:
+        try:
+            validate_rank_range(self._min_rank, self._max_rank)
+        except RankRangeError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        for item in self.children:
+            if isinstance(item, (discord.ui.Button, discord.ui.Select)):
+                item.disabled = True
+        await interaction.response.edit_message(view=self)
+        await execute_panel_lobby_create(
+            interaction,
+            self._panel,
+            slots=self._slots,
+            party_code=self._party_code,
+            min_rank=self._min_rank,
+            max_rank=self._max_rank,
+            party_code_public=True,
+            ranks_verified=False,
+            wanted_agents=[],
+            post_style=POST_STYLE_SIMPLE,
+        )
+
+
 class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
     vagas = discord.ui.TextInput(
         label="Quantas vagas? (1 a 4)",
@@ -623,12 +702,6 @@ class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
         placeholder="ABC123",
         required=True,
         max_length=32,
-    )
-    rank = discord.ui.TextInput(
-        label="Rank (opcional)",
-        placeholder="Gold ou Plat–Diamond",
-        required=False,
-        max_length=64,
     )
 
     def __init__(self, panel: CreateGroupPanelView) -> None:
@@ -650,23 +723,18 @@ class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
                 ephemeral=True,
             )
             return
-        min_rank = parse_optional_panel_rank(self.rank.value)
-        max_rank: str | None = None
-        if interaction.user is None or not isinstance(interaction.user, discord.Member):
+        if interaction.user is None:
             await interaction.response.send_message("Só no servidor.", ephemeral=True)
             return
-        await interaction.response.defer(ephemeral=True)
-        await execute_panel_lobby_create(
-            interaction,
-            self._panel,
-            slots=slots,
-            party_code=party_code,
-            min_rank=min_rank,
-            max_rank=max_rank,
-            party_code_public=True,
-            ranks_verified=False,
-            wanted_agents=[],
-            post_style=POST_STYLE_SIMPLE,
+        await interaction.response.send_message(
+            "Escolhe **rank mínimo** e **máximo** (opcional) e carrega em **Publicar**.",
+            view=SimpleRankPublishView(
+                self._panel,
+                slots=slots,
+                party_code=party_code,
+                user_id=interaction.user.id,
+            ),
+            ephemeral=True,
         )
 
 

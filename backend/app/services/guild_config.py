@@ -28,7 +28,10 @@ from app.services.lfg_embed_style import (
     ImmuneEmbedTier,
     immune_embed_tiers_for_config,
     member_has_immune_role,
+    LfgEmbedSimpleSettings,
+    lfg_embed_simple_to_storage,
     normalize_lfg_embed_custom_texts,
+    normalize_lfg_embed_simple,
     normalize_rank_embed_colors,
     parse_embed_hex_color,
     union_immune_role_ids_from_tiers,
@@ -81,6 +84,7 @@ class GuildRuntimeConfig:
     lfg_panel_banner_url: str | None
     lfg_panel_decorative: bool
     lfg_embed_thumbnail_url: str | None
+    lfg_embed_simple: LfgEmbedSimpleSettings
     immune_embed_enabled: bool
     immune_embed_color: str
     immune_embed_label: str
@@ -181,6 +185,9 @@ def _settings_row_to_config(
             lfg_panel_banner_url=None,
             lfg_panel_decorative=True,
             lfg_embed_thumbnail_url=None,
+            lfg_embed_simple=normalize_lfg_embed_simple(
+                {}, fallback_footer_brand=DEFAULT_FOOTER_BRAND
+            ),
             immune_embed_enabled=True,
             immune_embed_color=DEFAULT_IMMUNE_EMBED_COLOR,
             immune_embed_label=DEFAULT_IMMUNE_EMBED_LABEL,
@@ -254,6 +261,10 @@ def _settings_row_to_config(
         lfg_panel_banner_url=(row.lfg_panel_banner_url or "").strip() or None,
         lfg_panel_decorative=bool(row.lfg_panel_decorative),
         lfg_embed_thumbnail_url=(row.lfg_embed_thumbnail_url or "").strip() or None,
+        lfg_embed_simple=normalize_lfg_embed_simple(
+            row.lfg_embed_simple,
+            fallback_footer_brand=(row.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND),
+        ),
         immune_embed_enabled=bool(row.immune_embed_enabled),
         immune_embed_color=parse_embed_hex_color(
             row.immune_embed_color, default=DEFAULT_IMMUNE_EMBED_COLOR
@@ -484,6 +495,7 @@ class GuildConfigService:
         stats_legacy_lobbies_created: int | None = None,
         stats_legacy_joins: int | None = None,
         stats_legacy_users: int | None = None,
+        lfg_embed_simple: dict[str, Any] | None = None,
     ) -> GuildSettings:
         row = await self.ensure_default_settings(session, guild_id)
         if lfg_channel_ids is not None:
@@ -542,6 +554,19 @@ class GuildConfigService:
                 row.lfg_embed_banner_url = str(lfg_embed_banner_url).strip()[:2048]
         if lfg_embed_custom_texts is not None:
             row.lfg_embed_custom_texts = normalize_lfg_embed_custom_texts(lfg_embed_custom_texts)
+        if lfg_embed_simple is not None:
+            merged = dict(row.lfg_embed_simple or {})
+            patch = dict(lfg_embed_simple)
+            if "custom_texts" in patch and isinstance(patch["custom_texts"], dict):
+                texts = dict(merged.get("custom_texts") or {})
+                texts.update(patch["custom_texts"])
+                patch["custom_texts"] = texts
+            merged.update(patch)
+            normalized = normalize_lfg_embed_simple(
+                merged,
+                fallback_footer_brand=(row.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND),
+            )
+            row.lfg_embed_simple = lfg_embed_simple_to_storage(normalized)
         if lfg_embed_show_author is not None:
             row.lfg_embed_show_author = lfg_embed_show_author
         if lfg_embed_show_timestamp is not None:

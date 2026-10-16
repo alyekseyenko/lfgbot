@@ -58,6 +58,7 @@ _EMBED_STYLE_KEYS = frozenset(
         "lfg_panel_banner_url",
         "lfg_panel_decorative",
         "lfg_embed_thumbnail_url",
+        "lfg_embed_simple",
     }
 )
 

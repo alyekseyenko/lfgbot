@@ -43,7 +43,10 @@ def test_simple_embed_omits_players_field() -> None:
     built = build_lobby_embed(lobby)
     names = [f.name for f in built.embed.fields]
     assert "Jogadores" not in " ".join(names)
-    assert any("party" in (n or "").lower() or "Código" in (n or "") for n in names)
+    assert any("Código" in (n or "") for n in names)
+    rank_fields = [f for f in built.embed.fields if "Rank" in (f.name or "")]
+    assert rank_fields
+    assert "Gold" in rank_fields[0].value
 
 
 @pytest.mark.asyncio

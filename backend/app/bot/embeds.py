@@ -121,7 +121,34 @@ def _player_line(
     return f"• **{user.name}**"
 
 
-def build_lobby_embed(
+def _rank_range_display(
+    lobby: Lobby,
+    guild: discord.Guild | None,
+    mention_ids: list[int],
+    role_mappings: dict[tuple[str, str], int] | None,
+) -> str:
+    if lobby.min_rank and lobby.max_rank:
+        min_label = rank_label_for_guild(
+            guild, lobby.min_rank, mention_ids, role_mappings=role_mappings
+        )
+        max_label = rank_label_for_guild(
+            guild, lobby.max_rank, mention_ids, role_mappings=role_mappings
+        )
+        return f"{min_label or lobby.min_rank} → {max_label or lobby.max_rank}"
+    if lobby.min_rank:
+        min_label = rank_label_for_guild(
+            guild, lobby.min_rank, mention_ids, role_mappings=role_mappings
+        )
+        return f"mín. {min_label or lobby.min_rank}"
+    if lobby.max_rank:
+        max_label = rank_label_for_guild(
+            guild, lobby.max_rank, mention_ids, role_mappings=role_mappings
+        )
+        return f"máx. {max_label or lobby.max_rank}"
+    return "Qualquer"
+
+
+def _build_simple_lobby_embed(
     lobby: Lobby,
     guild: discord.Guild | None = None,
     *,
@@ -131,7 +158,137 @@ def build_lobby_embed(
     host_member: discord.Member | None = None,
 ) -> LobbyEmbedBuild:
     mention_ids: list[int] = []
-    simple_post = is_simple_post_style(getattr(lobby, "post_style", None))
+    decorative = embed_style.decorative if embed_style is not None else False
+    inactive = _lobby_is_inactive(lobby)
+    mode_colour = _mode_colour(lobby.mode, embed_style)
+    full_colour, inactive_colour = state_colours_from_style(embed_style)
+    if host_member is None and guild is not None:
+        host_member = guild.get_member(lobby.host.discord_id)
+
+    colour, _immune = resolve_lobby_embed_colour(
+        lobby,
+        guild,
+        embed_style,
+        mode_colour=mode_colour,
+        full_colour=full_colour,
+        inactive_colour=inactive_colour,
+        host_member=host_member,
+    )
+    expires_local = lobby.expires_at.astimezone(PORTUGAL)
+    title = _strike_main_text(
+        _mode_title_prefix(lobby.mode, decorative),
+        inactive,
+    )
+    host_mention = f"<@{lobby.host.discord_id}>"
+    description = _strike_main_text(host_mention, inactive)
+    if inactive:
+        inactive_lead = embed_custom_text(
+            embed_style, "lobby_inactive_lead", DEFAULT_LOBBY_INACTIVE_LEAD
+        )
+        description = f"{inactive_lead}\n{host_mention}"
+    else:
+        hint = embed_custom_text(
+            embed_style, "lobby_simple_hint", DEFAULT_LOBBY_SIMPLE_HINT
+        ).strip()
+        if hint:
+            description = f"{description}\n_{hint}_"
+
+    show_timestamp = embed_style is not None and embed_style.show_timestamp
+    embed = discord.Embed(
+        title=title,
+        colour=colour,
+        timestamp=lobby.expires_at if show_timestamp else None,
+    )
+    if embed_style is not None and embed_style.show_author:
+        prefix = embed_custom_text(embed_style, "author_prefix", DEFAULT_AUTHOR_PREFIX)
+        embed.set_author(
+            name=_strike_main_text(f"{prefix} · {lobby.host.name}", inactive),
+            icon_url=host_member.display_avatar.url if host_member is not None else None,
+        )
+    embed.description = description
+
+    if lobby.party_code:
+        code_display = (
+            _strike_main_text(lobby.party_code, inactive)
+            if inactive
+            else f"```\n{lobby.party_code}\n```"
+        )
+        embed.add_field(
+            name=_embed_field_label(
+                embed_style, "field_party_code", "Código", decorative, "🔑"
+            ),
+            value=code_display,
+            inline=False,
+        )
+
+    embed.add_field(
+        name=_embed_field_label(embed_style, "field_slots", "Vagas", decorative, "🎯"),
+        value=_strike_main_text(f"**{lobby.slots}**", inactive),
+        inline=True,
+    )
+    rank_value = _rank_range_display(lobby, guild, mention_ids, role_mappings)
+    embed.add_field(
+        name=_embed_field_label(embed_style, "field_ranks", "Rank", decorative, "🏅"),
+        value=_strike_main_text(rank_value, inactive),
+        inline=True,
+    )
+    embed.add_field(
+        name=_embed_field_label(embed_style, "field_expires", "Expira", decorative, "⏱"),
+        value=_strike_main_text(f"**{expires_local.strftime('%H:%M')}**", inactive),
+        inline=True,
+    )
+
+    footer_icon: str | None = None
+    show_thumb = embed_style is None or embed_style.show_rank_thumbnail
+    fallback_thumb = (
+        (embed_style.lobby_thumbnail_url if embed_style is not None else None) or thumbnail_url
+    )
+    if show_thumb:
+        min_icon, _ = rank_role_media(guild, lobby.min_rank, role_mappings=role_mappings)
+        max_icon, _ = rank_role_media(guild, lobby.max_rank, role_mappings=role_mappings)
+        if lobby.min_rank and min_icon:
+            embed.set_thumbnail(url=min_icon)
+        elif lobby.max_rank and max_icon:
+            embed.set_thumbnail(url=max_icon)
+        elif fallback_thumb:
+            embed.set_thumbnail(url=fallback_thumb)
+        if lobby.min_rank and lobby.max_rank and max_icon:
+            footer_icon = max_icon
+
+    short_id = str(lobby.id).split("-")[0]
+    brand = (
+        embed_style.footer_brand.strip()
+        if embed_style is not None and embed_style.footer_brand.strip()
+        else "LFG Valorant"
+    )
+    suffix = embed_custom_text(embed_style, "footer_suffix", DEFAULT_FOOTER_SUFFIX)
+    footer_text = f"{brand} · #{short_id} · {expires_local.strftime('%H:%M')} {suffix}".strip()
+    embed.set_footer(text=footer_text, icon_url=footer_icon)
+
+    unique_ids = list(dict.fromkeys(mention_ids))
+    return LobbyEmbedBuild(embed=embed, mention_role_ids=unique_ids)
+
+
+def build_lobby_embed(
+    lobby: Lobby,
+    guild: discord.Guild | None = None,
+    *,
+    thumbnail_url: str | None = None,
+    role_mappings: dict[tuple[str, str], int] | None = None,
+    embed_style: LobbyEmbedStyle | None = None,
+    host_member: discord.Member | None = None,
+) -> LobbyEmbedBuild:
+    if is_simple_post_style(getattr(lobby, "post_style", None)):
+        return _build_simple_lobby_embed(
+            lobby,
+            guild,
+            thumbnail_url=thumbnail_url,
+            role_mappings=role_mappings,
+            embed_style=embed_style,
+            host_member=host_member,
+        )
+    mention_ids: list[int] = []
+    simple_post = False
     members = _active_members(lobby)
     joined = len(members) if not simple_post else 0
     decorative = embed_style.decorative if embed_style is not None else True

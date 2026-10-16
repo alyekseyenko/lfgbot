@@ -42,7 +42,9 @@ from app.services.lfg_embed_style import (
     DEFAULT_IMMUNE_EMBED_COLOR,
     DEFAULT_IMMUNE_EMBED_LABEL,
     immune_embed_tiers_for_config,
+    lfg_embed_simple_to_storage,
     normalize_lfg_embed_custom_texts,
+    normalize_lfg_embed_simple,
     normalize_rank_embed_colors,
     parse_embed_hex_color,
 )
@@ -155,6 +157,12 @@ def _settings_to_out(row) -> GuildSettingsOut:
         lfg_panel_banner_url=(row.lfg_panel_banner_url or "").strip() or None,
         lfg_panel_decorative=bool(row.lfg_panel_decorative),
         lfg_embed_thumbnail_url=(row.lfg_embed_thumbnail_url or "").strip() or None,
+        lfg_embed_simple=lfg_embed_simple_to_storage(
+            normalize_lfg_embed_simple(
+                row.lfg_embed_simple,
+                fallback_footer_brand=(row.lfg_embed_footer_brand or "LFG Valorant"),
+            )
+        ),
         immune_embed_enabled=bool(row.immune_embed_enabled),
         immune_embed_color=parse_embed_hex_color(
             row.immune_embed_color, default=DEFAULT_IMMUNE_EMBED_COLOR
@@ -324,6 +332,8 @@ async def patch_settings(
         patch_kwargs["lfg_panel_decorative"] = body.lfg_panel_decorative
     if body.lfg_embed_thumbnail_url is not None:
         patch_kwargs["lfg_embed_thumbnail_url"] = body.lfg_embed_thumbnail_url.strip() or None
+    if body.lfg_embed_simple is not None:
+        patch_kwargs["lfg_embed_simple"] = body.lfg_embed_simple
     if body.immune_embed_enabled is not None:
         patch_kwargs["immune_embed_enabled"] = body.immune_embed_enabled
     if body.immune_embed_color is not None:

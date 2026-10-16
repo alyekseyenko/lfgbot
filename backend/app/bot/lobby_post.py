@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.core.events import EventBus
 from app.services import lobbies as lobby_service
 from app.services.guild_config import GuildConfigService
-from app.services.lfg_embed_style import lobby_embed_style_from_config
+from app.services.lfg_embed_style import lobby_embed_style_for_post
 
 
 async def publish_lobby(
@@ -78,7 +78,7 @@ async def publish_lobby(
     if guild_config is not None and guild is not None:
         cfg = await guild_config.get_config_for_factory(session_factory, guild.id)
         role_mappings = cfg.role_mappings
-        embed_style = lobby_embed_style_from_config(cfg)
+        embed_style = lobby_embed_style_for_post(cfg, lobby_detail.post_style)
     host_member = None
     if guild is not None:
         host_member = await fetch_guild_member(guild, host.id)

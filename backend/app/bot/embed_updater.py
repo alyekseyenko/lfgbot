@@ -18,7 +18,7 @@ from app.core.events import DomainEvent, EventBus, EventType
 from app.core.metrics import discord_http_errors_total, embed_edits_total, embed_events_total
 from app.db.models import Lobby, LobbyState
 from app.services.guild_config import GuildConfigService
-from app.services.lfg_embed_style import lobby_embed_style_from_config
+from app.services.lfg_embed_style import lobby_embed_style_for_post
 from app.services.lobbies import get_lobby_detail
 
 logger = logging.getLogger(__name__)
@@ -190,7 +190,7 @@ class EmbedUpdater:
             async with self._session_factory() as session:
                 cfg = await self._guild_config.get_config(session, guild.id)
             role_mappings = cfg.role_mappings
-            embed_style = lobby_embed_style_from_config(cfg)
+            embed_style = lobby_embed_style_for_post(cfg, lobby.post_style)
         host_member = None
         if guild is not None:
             host_member = await self._get_host_member(guild, lobby.host.discord_id)
@@ -251,7 +251,7 @@ class EmbedUpdater:
             async with self._session_factory() as session:
                 cfg = await self._guild_config.get_config(session, guild.id)
             role_mappings = cfg.role_mappings
-            embed_style = lobby_embed_style_from_config(cfg)
+            embed_style = lobby_embed_style_for_post(cfg, lobby.post_style)
         host_member = None
         if guild is not None:
             host_member = await self._get_host_member(guild, lobby.host.discord_id)

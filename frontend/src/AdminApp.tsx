@@ -19,6 +19,7 @@ import {
 import { RoleMultiSearchSelect, RoleSearchSelect } from "./RoleSearchSelect";
 import {
   ADMIN_SECTIONS,
+  EMBED_PEDIDOS_MODE_TABS,
   EMBED_PEDIDOS_TABS,
   EMBED_TABS,
   EMBED_TEXT_FIELDS,
@@ -26,9 +27,13 @@ import {
   defaultEmbedText,
   effectiveEmbedText,
   isEmbedTextCustomized,
+  pedidosEmbedTextFields,
+  pedidosEmbedTextSections,
   type AdminSection,
+  type EmbedPedidosMode,
   type EmbedPedidosTab,
   type EmbedTab,
+  type LfgEmbedSimpleSettings,
 } from "./embedAdminConfig";
 import { EmbedTextFieldRow } from "./components/EmbedTextFieldRow";
 
@@ -77,6 +82,37 @@ function hexForColorInput(hex: string): string {
   return `#${clean.padEnd(6, "0")}`;
 }
 
+function pedidosModeColor(
+  settings: GuildSettings,
+  mode: EmbedPedidosMode,
+  key: "competitive_color" | "unrated_color" | "inactive_color",
+): string {
+  if (mode === "simples") {
+    const simple = settings.lfg_embed_simple ?? {};
+    const fallback =
+      key === "competitive_color"
+        ? "FF4655"
+        : key === "unrated_color"
+          ? "5E98D9"
+          : "4A4E5A";
+    const raw = simple[key] ?? fallback;
+    return String(raw).replace("#", "").toUpperCase().slice(0, 6);
+  }
+  if (key === "competitive_color") return settings.lfg_embed_competitive_color;
+  if (key === "unrated_color") return settings.lfg_embed_unrated_color;
+  return settings.lfg_embed_inactive_color;
+}
+
+function pedidosModeColorSource(
+  settings: GuildSettings,
+  mode: EmbedPedidosMode,
+): GuildSettings["lfg_embed_color_source"] {
+  if (mode === "simples") {
+    return settings.lfg_embed_simple?.color_source ?? "min_rank";
+  }
+  return settings.lfg_embed_color_source ?? "mode";
+}
+
 export function AdminApp() {
   const [user, setUser] = useState<User | null>(null);
   const [guilds, setGuilds] = useState<Guild[]>([]);
@@ -104,6 +140,7 @@ export function AdminApp() {
   const [adminSection, setAdminSection] = useState<AdminSection>("geral");
   const [embedTab, setEmbedTab] = useState<EmbedTab>("painel");
   const [embedPedidosTab, setEmbedPedidosTab] = useState<EmbedPedidosTab>("cores");
+  const [embedPedidosMode, setEmbedPedidosMode] = useState<EmbedPedidosMode>("simples");
 
   const selected = useMemo(
     () =>
@@ -274,13 +311,44 @@ export function AdminApp() {
     setSettings((prev) => normalizeGuildSettings({ ...(prev ?? {}), ...patch }));
   };
 
+  const patchPedidosSimple = (patch: Partial<LfgEmbedSimpleSettings>) => {
+    if (!settings) return;
+    const current = settings.lfg_embed_simple ?? {};
+    const next: LfgEmbedSimpleSettings = { ...current, ...patch };
+    if (patch.custom_texts) {
+      next.custom_texts = {
+        ...(current.custom_texts ?? {}),
+        ...patch.custom_texts,
+      };
+    }
+    patchSettings({ lfg_embed_simple: next });
+  };
+
+  const pedidosCustomTexts = (): Record<string, string> => {
+    if (!settings) return {};
+    if (embedPedidosMode === "simples") {
+      return settings.lfg_embed_simple?.custom_texts ?? {};
+    }
+    return settings.lfg_embed_custom_texts ?? {};
+  };
+
   const patchEmbedText = (key: string, value: string) => {
     if (!settings) return;
     const field = EMBED_TEXT_FIELDS.find((f) => f.key === key);
     const max = field?.max ?? 4096;
-    const next = { ...(settings.lfg_embed_custom_texts ?? {}) };
     const trimmed = value.trim().slice(0, max);
     const defaultVal = defaultEmbedText(key).trim();
+    if (embedPedidosMode === "simples") {
+      const next = { ...pedidosCustomTexts() };
+      if (!trimmed || trimmed === defaultVal) {
+        delete next[key];
+      } else {
+        next[key] = trimmed;
+      }
+      patchPedidosSimple({ custom_texts: next });
+      return;
+    }
+    const next = { ...(settings.lfg_embed_custom_texts ?? {}) };
     if (!trimmed || trimmed === defaultVal) {
       delete next[key];
     } else {
@@ -1071,6 +1139,19 @@ export function AdminApp() {
 
             {embedTab === "pedidos" && (
             <>
+            <nav className="embed-subnav" aria-label="Tipo de pedido LFG">
+              {EMBED_PEDIDOS_MODE_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={embedPedidosMode === tab.id ? "active" : undefined}
+                  onClick={() => setEmbedPedidosMode(tab.id)}
+                >
+                  {tab.label}
+                  <span className="embed-subnav__hint">{tab.hint}</span>
+                </button>
+              ))}
+            </nav>
             <nav className="embed-subnav" aria-label="Pedidos publicados">
               {EMBED_PEDIDOS_TABS.map((tab) => (
                 <button
@@ -1089,8 +1170,16 @@ export function AdminApp() {
             <label className="checkbox-row">
               <input
                 type="checkbox"
-                checked={settings.lfg_embed_decorative ?? true}
-                onChange={(e) => patchSettings({ lfg_embed_decorative: e.target.checked })}
+                checked={
+                  embedPedidosMode === "simples"
+                    ? (settings.lfg_embed_simple?.decorative ?? false)
+                    : (settings.lfg_embed_decorative ?? true)
+                }
+                onChange={(e) =>
+                  embedPedidosMode === "simples"
+                    ? patchPedidosSimple({ decorative: e.target.checked })
+                    : patchSettings({ lfg_embed_decorative: e.target.checked })
+                }
               />
               Estilo chamativo nos pedidos (emojis, barra de vagas 🟥)
             </label>
@@ -1100,14 +1189,21 @@ export function AdminApp() {
                 <div className="rank-color-row">
                   <input
                     type="color"
-                    value={hexForColorInput(settings.lfg_embed_competitive_color)}
-                    onChange={(e) =>
-                      patchSettings({
-                        lfg_embed_competitive_color: e.target.value.replace("#", "").toUpperCase(),
-                      })
-                    }
+                    value={hexForColorInput(
+                      pedidosModeColor(settings, embedPedidosMode, "competitive_color"),
+                    )}
+                    onChange={(e) => {
+                      const value = e.target.value.replace("#", "").toUpperCase();
+                      if (embedPedidosMode === "simples") {
+                        patchPedidosSimple({ competitive_color: value });
+                      } else {
+                        patchSettings({ lfg_embed_competitive_color: value });
+                      }
+                    }}
                   />
-                  <code>#{settings.lfg_embed_competitive_color}</code>
+                  <code>
+                    #{pedidosModeColor(settings, embedPedidosMode, "competitive_color")}
+                  </code>
                 </div>
               </label>
               <label>
@@ -1115,16 +1211,22 @@ export function AdminApp() {
                 <div className="rank-color-row">
                   <input
                     type="color"
-                    value={hexForColorInput(settings.lfg_embed_unrated_color)}
-                    onChange={(e) =>
-                      patchSettings({
-                        lfg_embed_unrated_color: e.target.value.replace("#", "").toUpperCase(),
-                      })
-                    }
+                    value={hexForColorInput(
+                      pedidosModeColor(settings, embedPedidosMode, "unrated_color"),
+                    )}
+                    onChange={(e) => {
+                      const value = e.target.value.replace("#", "").toUpperCase();
+                      if (embedPedidosMode === "simples") {
+                        patchPedidosSimple({ unrated_color: value });
+                      } else {
+                        patchSettings({ lfg_embed_unrated_color: value });
+                      }
+                    }}
                   />
-                  <code>#{settings.lfg_embed_unrated_color}</code>
+                  <code>#{pedidosModeColor(settings, embedPedidosMode, "unrated_color")}</code>
                 </div>
               </label>
+              {embedPedidosMode === "detalhado" && (
               <label>
                 Cor lobby cheio
                 <div className="rank-color-row">
@@ -1140,32 +1242,40 @@ export function AdminApp() {
                   <code>#{settings.lfg_embed_full_color}</code>
                 </div>
               </label>
+              )}
               <label>
                 Cor fechado / expirado
                 <div className="rank-color-row">
                   <input
                     type="color"
-                    value={hexForColorInput(settings.lfg_embed_inactive_color)}
-                    onChange={(e) =>
-                      patchSettings({
-                        lfg_embed_inactive_color: e.target.value.replace("#", "").toUpperCase(),
-                      })
-                    }
+                    value={hexForColorInput(
+                      pedidosModeColor(settings, embedPedidosMode, "inactive_color"),
+                    )}
+                    onChange={(e) => {
+                      const value = e.target.value.replace("#", "").toUpperCase();
+                      if (embedPedidosMode === "simples") {
+                        patchPedidosSimple({ inactive_color: value });
+                      } else {
+                        patchSettings({ lfg_embed_inactive_color: value });
+                      }
+                    }}
                   />
-                  <code>#{settings.lfg_embed_inactive_color}</code>
+                  <code>#{pedidosModeColor(settings, embedPedidosMode, "inactive_color")}</code>
                 </div>
               </label>
             </div>
             <label>
               Cor da barra por
               <select
-                value={settings.lfg_embed_color_source ?? "mode"}
-                onChange={(e) =>
-                  patchSettings({
-                    lfg_embed_color_source: e.target
-                      .value as GuildSettings["lfg_embed_color_source"],
-                  })
-                }
+                value={pedidosModeColorSource(settings, embedPedidosMode)}
+                onChange={(e) => {
+                  const value = e.target.value as GuildSettings["lfg_embed_color_source"];
+                  if (embedPedidosMode === "simples") {
+                    patchPedidosSimple({ color_source: value });
+                  } else {
+                    patchSettings({ lfg_embed_color_source: value });
+                  }
+                }}
               >
                 <option value="mode">Modo (Competitivo / Unrated)</option>
                 <option value="host_rank">Rank do host</option>
@@ -1231,21 +1341,20 @@ export function AdminApp() {
                 Textos dos embeds quando alguém <strong>publica um grupo</strong> (não o
                 painel fixo).
               </p>
-              {EMBED_TEXT_SECTIONS.filter((s) => s.id !== "painel").map((section) => (
+              {pedidosEmbedTextSections(embedPedidosMode).map((section) => (
                 <section key={section.id} className="embed-text-section">
                   <h3>{section.title}</h3>
                   <p className="hint">{section.intro}</p>
                   <div className="embed-text-section__fields">
-                    {EMBED_TEXT_FIELDS.filter((f) => f.group === section.id).map((field) => (
+                    {pedidosEmbedTextFields(embedPedidosMode)
+                      .filter((f) => f.group === section.id)
+                      .map((field) => (
                       <EmbedTextFieldRow
                         key={field.key}
                         field={field}
-                        value={effectiveEmbedText(
-                          settings.lfg_embed_custom_texts ?? {},
-                          field.key,
-                        )}
+                        value={effectiveEmbedText(pedidosCustomTexts(), field.key)}
                         isCustomized={isEmbedTextCustomized(
-                          settings.lfg_embed_custom_texts ?? {},
+                          pedidosCustomTexts(),
                           field.key,
                         )}
                         onChange={(v) => patchEmbedText(field.key, v)}
@@ -1265,10 +1374,29 @@ export function AdminApp() {
                 <input
                   type="text"
                   maxLength={64}
-                  value={settings.lfg_embed_footer_brand ?? "LFG Valorant"}
-                  onChange={(e) => patchSettings({ lfg_embed_footer_brand: e.target.value })}
+                  value={
+                    embedPedidosMode === "simples"
+                      ? (settings.lfg_embed_simple?.footer_brand ??
+                        settings.lfg_embed_footer_brand ??
+                        "LFG Valorant")
+                      : (settings.lfg_embed_footer_brand ?? "LFG Valorant")
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (embedPedidosMode === "simples") {
+                      patchPedidosSimple({ footer_brand: value.trim() || null });
+                    } else {
+                      patchSettings({ lfg_embed_footer_brand: value });
+                    }
+                  }}
+                  placeholder={
+                    embedPedidosMode === "simples"
+                      ? "Vazio = marca do modo detalhado"
+                      : undefined
+                  }
                 />
               </label>
+              {embedPedidosMode === "detalhado" && (
               <label>
                 Banner dos pedidos (URL HTTPS)
                 <input
@@ -1280,16 +1408,27 @@ export function AdminApp() {
                   placeholder="https://…"
                 />
               </label>
+              )}
               <label>
                 Miniatura dos pedidos (se não houver ícone de rank)
                 <input
                   type="url"
-                  value={settings.lfg_embed_thumbnail_url ?? ""}
-                  onChange={(e) =>
-                    patchSettings({ lfg_embed_thumbnail_url: e.target.value.trim() || null })
+                  value={
+                    embedPedidosMode === "simples"
+                      ? (settings.lfg_embed_simple?.lobby_thumbnail_url ?? "")
+                      : (settings.lfg_embed_thumbnail_url ?? "")
                   }
+                  onChange={(e) => {
+                    const url = e.target.value.trim() || null;
+                    if (embedPedidosMode === "simples") {
+                      patchPedidosSimple({ lobby_thumbnail_url: url });
+                    } else {
+                      patchSettings({ lfg_embed_thumbnail_url: url });
+                    }
+                  }}
                 />
               </label>
+              {embedPedidosMode === "detalhado" && (
               <label className="checkbox-row">
                 <input
                   type="checkbox"
@@ -1300,20 +1439,35 @@ export function AdminApp() {
                 />
                 Mostrar banner nos pedidos
               </label>
+              )}
               <label className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={settings.lfg_embed_show_author ?? true}
-                  onChange={(e) => patchSettings({ lfg_embed_show_author: e.target.checked })}
+                  checked={
+                    embedPedidosMode === "simples"
+                      ? (settings.lfg_embed_simple?.show_author ?? false)
+                      : (settings.lfg_embed_show_author ?? true)
+                  }
+                  onChange={(e) =>
+                    embedPedidosMode === "simples"
+                      ? patchPedidosSimple({ show_author: e.target.checked })
+                      : patchSettings({ lfg_embed_show_author: e.target.checked })
+                  }
                 />
                 Mostrar autor (host + avatar)
               </label>
               <label className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={settings.lfg_embed_show_timestamp ?? true}
+                  checked={
+                    embedPedidosMode === "simples"
+                      ? (settings.lfg_embed_simple?.show_timestamp ?? false)
+                      : (settings.lfg_embed_show_timestamp ?? true)
+                  }
                   onChange={(e) =>
-                    patchSettings({ lfg_embed_show_timestamp: e.target.checked })
+                    embedPedidosMode === "simples"
+                      ? patchPedidosSimple({ show_timestamp: e.target.checked })
+                      : patchSettings({ lfg_embed_show_timestamp: e.target.checked })
                   }
                 />
                 Mostrar data/hora no embed
@@ -1321,9 +1475,15 @@ export function AdminApp() {
               <label className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={settings.lfg_embed_show_thumbnail ?? true}
+                  checked={
+                    embedPedidosMode === "simples"
+                      ? (settings.lfg_embed_simple?.show_rank_thumbnail ?? true)
+                      : (settings.lfg_embed_show_thumbnail ?? true)
+                  }
                   onChange={(e) =>
-                    patchSettings({ lfg_embed_show_thumbnail: e.target.checked })
+                    embedPedidosMode === "simples"
+                      ? patchPedidosSimple({ show_rank_thumbnail: e.target.checked })
+                      : patchSettings({ lfg_embed_show_thumbnail: e.target.checked })
                   }
                 />
                 Miniatura automática por rank (roles mapeadas)
