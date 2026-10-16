@@ -10,11 +10,11 @@ from app.core.events import EventBus
 from app.db.models import User
 from app.services.errors import HostRecreateBlockedError
 from app.services.guild_config import GuildRuntimeConfig
-from app.services.lfg_embed_style import LfgEmbedSimpleSettings
 from app.services.host_recreate_cooldown import (
     apply_host_recreate_cooldown,
     assert_can_host_create,
 )
+from app.services.lfg_embed_style import LfgEmbedSimpleSettings
 from app.services.lobbies import close_lobby_as_host, create_lobby
 
 
