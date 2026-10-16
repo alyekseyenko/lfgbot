@@ -58,8 +58,8 @@ LFG_EMBED_TEXT_LIMITS: dict[str, int] = {
     "field_party_code": 256,
 }
 
-DEFAULT_PANEL_LEAD = "**Procura team? Publica aqui em segundos.**"
-DEFAULT_PANEL_CTA = "▸ Clica em **Criar grupo** para começar."
+DEFAULT_PANEL_LEAD = "**Procura team?**"
+DEFAULT_PANEL_CTA = ""
 DEFAULT_LOBBY_CTA_OPEN = "👇 **Usa os botões abaixo** para entrar ou sair."
 DEFAULT_LOBBY_INACTIVE_LEAD = "**Este grupo já não está ativo.**"
 DEFAULT_LOBBY_EMPTY_PLAYERS = "_Ninguém na lista — **Entrar** para te juntares._"

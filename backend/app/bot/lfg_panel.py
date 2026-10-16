@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import time
+from dataclasses import dataclass
 
 import discord
 from discord.ext import commands
@@ -24,23 +25,33 @@ from app.services.lfg_embed_style import (
     lobby_embed_style_from_config,
     parse_embed_hex_color,
 )
+from app.services.lobby_post_style import POST_STYLE_INTERACTIVE, POST_STYLE_SIMPLE
 from app.services.lobby_source import LOBBY_SOURCE_PANEL
-from app.services.ranks import VALORANT_RANKS, normalize_rank_name, validate_rank_range
+from app.services.ranks import AGENT_ROLES, VALORANT_RANKS, normalize_rank_name, validate_rank_range
 
 RANK_SELECT_NONE = "__none__"
+RANKS_MODE_INFO = "info"
+RANKS_MODE_VERIFIED = "verified"
+CODE_VISIBILITY_PUBLIC = "public"
+CODE_VISIBILITY_PRIVATE = "private"
 
 logger = logging.getLogger(__name__)
 
 PANEL_BUTTON_CUSTOM_ID = "lfg:panel:create"
 PANEL_EMBED_TITLE = "LFG — Criar grupo"
 PANEL_EMBED_DESCRIPTION = (
-    "Clica em **Criar grupo**.\n\n"
-    "**1.** Vagas e código da party (o essencial)\n"
-    "**2.** Ranks opcionais em dropdown (mín. / máx., como as roles)\n"
-    "**3.** **Publicar** — o pedido fica neste canal com Entrar / Sair\n\n"
-    "O formulário é só para ti; o grupo é público.\n"
-    "Ainda podes escrever no chat (`ABC123 +2`) ou usar `/procurar` para mais opções."
+    "**Criar grupo** → **Simples** (padrão) ou **Detalhado**.\n"
+    "Simples: código, vagas e rank — só **Fechar**. Detalhado: **Entrar** / **Sair** · ou `/procurar`."
 )
+
+
+def _append_guide_channel_line(text: str, guide_channel_id: int) -> str:
+    if guide_channel_id <= 0:
+        return text
+    mention = f"<#{guide_channel_id}>"
+    if mention in text:
+        return text
+    return f"{text.rstrip()}\n\nGuia: {mention}"
 
 _SLOTS_RE = re.compile(r"^[1-4]$")
 
@@ -121,6 +132,10 @@ async def execute_panel_lobby_create(
     party_code: str | None,
     min_rank: str | None,
     max_rank: str | None,
+    party_code_public: bool = True,
+    ranks_verified: bool = False,
+    wanted_agents: list[str] | None = None,
+    post_style: str = POST_STYLE_SIMPLE,
 ) -> None:
     if panel.bot is None or panel.settings is None or panel.session_factory is None:
         await interaction.followup.send("Bot em arranque. Tenta outra vez.", ephemeral=True)
@@ -163,9 +178,10 @@ async def execute_panel_lobby_create(
         party_code=party_code,
         min_rank=min_rank,
         max_rank=max_rank,
-        party_code_public=True,
-        wanted_agents=[],
-        ranks_verified=False,
+        party_code_public=party_code_public,
+        wanted_agents=list(wanted_agents or []),
+        ranks_verified=ranks_verified,
+        post_style=post_style,
     )
     try:
         await begin_lobby_create(
@@ -213,7 +229,11 @@ def is_panel_message(message: discord.Message, bot_user_id: int | None) -> bool:
     return PANEL_EMBED_TITLE in title
 
 
-def build_panel_embed(embed_style: LobbyEmbedStyle | None = None) -> discord.Embed:
+def build_panel_embed(
+    embed_style: LobbyEmbedStyle | None = None,
+    *,
+    guide_channel_id: int = 0,
+) -> discord.Embed:
     decorative = embed_style.panel_decorative if embed_style is not None else True
     custom_title = embed_custom_text(embed_style, "panel_title", "")
     title = custom_title if custom_title else _panel_title(decorative)
@@ -221,11 +241,18 @@ def build_panel_embed(embed_style: LobbyEmbedStyle | None = None) -> discord.Emb
     if custom_body:
         description = custom_body
     else:
-        description = PANEL_EMBED_DESCRIPTION
+        parts: list[str] = []
         if decorative:
             lead = embed_custom_text(embed_style, "panel_lead", DEFAULT_PANEL_LEAD)
+            if lead.strip():
+                parts.append(lead.strip())
+        parts.append(PANEL_EMBED_DESCRIPTION)
+        if decorative:
             cta = embed_custom_text(embed_style, "panel_cta", DEFAULT_PANEL_CTA)
-            description = f"{lead}\n\n{PANEL_EMBED_DESCRIPTION}\n\n{cta}"
+            if cta.strip():
+                parts.append(cta.strip())
+        description = "\n\n".join(parts)
+    description = _append_guide_channel_line(description, guide_channel_id)
     hex_color = (
         parse_embed_hex_color(embed_style.panel_color, default=DEFAULT_COMPETITIVE_COLOR)
         if embed_style is not None
@@ -257,23 +284,124 @@ async def _panel_embed_for_guild(
 ) -> discord.Embed:
     if guild_id is None:
         return build_panel_embed()
+    guide_channel_id = 0
+    async with session_factory() as session:
+        row = await guild_config.ensure_default_settings(session, guild_id)
+        guide_channel_id = int(row.guide_channel_id or 0)
     cfg = await guild_config.get_config_for_factory(session_factory, guild_id)
     if cfg is None:
-        return build_panel_embed()
-    return build_panel_embed(lobby_embed_style_from_config(cfg))
+        return build_panel_embed(guide_channel_id=guide_channel_id)
+    return build_panel_embed(
+        lobby_embed_style_from_config(cfg),
+        guide_channel_id=guide_channel_id,
+    )
 
 
 def rank_extras_prompt(*, slots: int, party_code: str | None) -> str:
     code_line = f"`{party_code}`" if party_code else "sem código"
     return (
         f"Pedido: **{slots}** vaga(s), código {code_line}.\n"
-        "Opcional: escolhe **rank mínimo** e **máximo** nos menus "
-        "(como as roles). Depois clica **Publicar**.\n"
-        "Se não escolheres nada, o pedido fica para qualquer rank."
+        "Mesmas opções que **`/procurar`**: ranks, verificação, código público/privado, "
+        "agentes (até 2). Depois **Publicar**."
     )
 
 
+def ranks_mode_select_options() -> list[discord.SelectOption]:
+    return [
+        discord.SelectOption(
+            label="Informativos (sem bloqueio)",
+            value=RANKS_MODE_INFO,
+            description="Ranks só no embed",
+            default=True,
+        ),
+        discord.SelectOption(
+            label="Verificados (bloqueia ao entrar)",
+            value=RANKS_MODE_VERIFIED,
+            description="O bot valida as roles de rank",
+        ),
+    ]
+
+
+def code_visibility_select_options() -> list[discord.SelectOption]:
+    return [
+        discord.SelectOption(
+            label="Público (código no canal)",
+            value=CODE_VISIBILITY_PUBLIC,
+            default=True,
+        ),
+        discord.SelectOption(
+            label="Privado (código só após Entrar)",
+            value=CODE_VISIBILITY_PRIVATE,
+        ),
+    ]
+
+
+def agent_select_options() -> list[discord.SelectOption]:
+    return [
+        discord.SelectOption(label=role, value=role)
+        for role in sorted(AGENT_ROLES)
+    ]
+
+
+@dataclass(slots=True)
+class _PanelLobbyDraft:
+    panel: CreateGroupPanelView
+    slots: int
+    party_code: str | None
+    min_rank: str | None
+    max_rank: str | None
+    ranks_verified: bool
+    party_code_public: bool
+    post_style: str = POST_STYLE_INTERACTIVE
+
+
+async def _publish_panel_draft(
+    interaction: discord.Interaction,
+    draft: _PanelLobbyDraft,
+    *,
+    wanted_agents: list[str],
+    view_to_disable: discord.ui.View,
+) -> None:
+    try:
+        validate_rank_range(draft.min_rank, draft.max_rank)
+    except RankRangeError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+    for item in view_to_disable.children:
+        if isinstance(item, (discord.ui.Button, discord.ui.Select)):
+            item.disabled = True
+    await interaction.response.edit_message(view=view_to_disable)
+    await execute_panel_lobby_create(
+        interaction,
+        draft.panel,
+        slots=draft.slots,
+        party_code=draft.party_code,
+        min_rank=draft.min_rank,
+        max_rank=draft.max_rank,
+        party_code_public=draft.party_code_public,
+        ranks_verified=draft.ranks_verified,
+        wanted_agents=wanted_agents,
+        post_style=draft.post_style,
+    )
+
+
+class _PanelExtrasUserCheck:
+    def __init__(self, user_id: int) -> None:
+        self._user_id = user_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user is None or interaction.user.id != self._user_id:
+            await interaction.response.send_message(
+                "Só quem criou o pedido pode continuar.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+
 class PanelRankExtrasView(discord.ui.View):
+    """Passo 1: ranks, modo e visibilidade do código (se houver)."""
+
     def __init__(
         self,
         panel: CreateGroupPanelView,
@@ -287,10 +415,13 @@ class PanelRankExtrasView(discord.ui.View):
         self._slots = slots
         self._party_code = party_code
         self._user_id = user_id
+        self._check = _PanelExtrasUserCheck(user_id)
         self._min_rank: str | None = None
         self._max_rank: str | None = None
+        self._ranks_verified = False
+        self._party_code_public = True
 
-        self._min_select: discord.ui.Select[PanelRankExtrasView] = discord.ui.Select(
+        self._min_select = discord.ui.Select(
             placeholder="Rank mínimo (opcional)",
             options=rank_select_options(),
             min_values=1,
@@ -299,7 +430,7 @@ class PanelRankExtrasView(discord.ui.View):
         self._min_select.callback = self._on_min_rank
         self.add_item(self._min_select)
 
-        self._max_select: discord.ui.Select[PanelRankExtrasView] = discord.ui.Select(
+        self._max_select = discord.ui.Select(
             placeholder="Rank máximo (opcional)",
             options=rank_select_options(),
             min_values=1,
@@ -308,21 +439,43 @@ class PanelRankExtrasView(discord.ui.View):
         self._max_select.callback = self._on_max_rank
         self.add_item(self._max_select)
 
-        publish_btn: discord.ui.Button[PanelRankExtrasView] = discord.ui.Button(
-            label="Publicar",
-            style=discord.ButtonStyle.success,
+        self._ranks_mode_select = discord.ui.Select(
+            placeholder="Ranks informativos (padrão)",
+            options=ranks_mode_select_options(),
+            min_values=1,
+            max_values=1,
         )
-        publish_btn.callback = self._on_publish
-        self.add_item(publish_btn)
+        self._ranks_mode_select.callback = self._on_ranks_mode
+        self.add_item(self._ranks_mode_select)
+
+        has_code = bool((party_code or "").strip())
+        if has_code:
+            self._visibility_select = discord.ui.Select(
+                placeholder="Código público no canal (padrão)",
+                options=code_visibility_select_options(),
+                min_values=1,
+                max_values=1,
+            )
+            self._visibility_select.callback = self._on_visibility
+            self.add_item(self._visibility_select)
+            next_btn = discord.ui.Button(label="Seguinte", style=discord.ButtonStyle.primary)
+            next_btn.callback = self._on_next
+            self.add_item(next_btn)
+        else:
+            self._agents_select = discord.ui.Select(
+                placeholder="Agentes procurados (opcional, até 2)",
+                options=agent_select_options(),
+                min_values=0,
+                max_values=2,
+            )
+            self._agents_select.callback = self._on_agents_defer
+            self.add_item(self._agents_select)
+            publish_btn = discord.ui.Button(label="Publicar", style=discord.ButtonStyle.success)
+            publish_btn.callback = self._on_publish
+            self.add_item(publish_btn)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user is None or interaction.user.id != self._user_id:
-            await interaction.response.send_message(
-                "Só quem criou o pedido pode continuar.",
-                ephemeral=True,
-            )
-            return False
-        return True
+        return await self._check.interaction_check(interaction)
 
     async def _on_min_rank(self, interaction: discord.Interaction) -> None:
         chosen = self._min_select.values[0] if self._min_select.values else RANK_SELECT_NONE
@@ -334,27 +487,186 @@ class PanelRankExtrasView(discord.ui.View):
         self._max_rank = rank_from_select_value(chosen)
         await interaction.response.defer()
 
+    async def _on_ranks_mode(self, interaction: discord.Interaction) -> None:
+        mode = self._ranks_mode_select.values[0] if self._ranks_mode_select.values else RANKS_MODE_INFO
+        self._ranks_verified = mode == RANKS_MODE_VERIFIED
+        await interaction.response.defer()
+
+    async def _on_visibility(self, interaction: discord.Interaction) -> None:
+        vis = (
+            self._visibility_select.values[0]
+            if self._visibility_select.values
+            else CODE_VISIBILITY_PUBLIC
+        )
+        self._party_code_public = vis == CODE_VISIBILITY_PUBLIC
+        await interaction.response.defer()
+
+    async def _on_agents_defer(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
     def _disable_all(self) -> None:
         for item in self.children:
             if isinstance(item, (discord.ui.Button, discord.ui.Select)):
                 item.disabled = True
 
-    async def _on_publish(self, interaction: discord.Interaction) -> None:
+    async def _on_next(self, interaction: discord.Interaction) -> None:
         try:
             validate_rank_range(self._min_rank, self._max_rank)
         except RankRangeError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
-
         self._disable_all()
-        await interaction.response.edit_message(view=self)
-        await execute_panel_lobby_create(
-            interaction,
-            self._panel,
+        draft = _PanelLobbyDraft(
+            panel=self._panel,
             slots=self._slots,
             party_code=self._party_code,
             min_rank=self._min_rank,
             max_rank=self._max_rank,
+            ranks_verified=self._ranks_verified,
+            party_code_public=self._party_code_public,
+            post_style=POST_STYLE_INTERACTIVE,
+        )
+        view = PanelAgentsPublishView(draft=draft, user_id=self._user_id)
+        await interaction.response.edit_message(
+            content="Escolhe até **2 roles de agente** (opcional) e publica.",
+            view=view,
+        )
+
+    async def _on_publish(self, interaction: discord.Interaction) -> None:
+        agents = list(self._agents_select.values) if hasattr(self, "_agents_select") else []
+        draft = _PanelLobbyDraft(
+            panel=self._panel,
+            slots=self._slots,
+            party_code=self._party_code,
+            min_rank=self._min_rank,
+            max_rank=self._max_rank,
+            ranks_verified=self._ranks_verified,
+            party_code_public=self._party_code_public,
+            post_style=POST_STYLE_INTERACTIVE,
+        )
+        await _publish_panel_draft(interaction, draft, wanted_agents=agents, view_to_disable=self)
+
+
+class PanelAgentsPublishView(discord.ui.View):
+    """Passo 2 (com código): agentes + publicar."""
+
+    def __init__(self, *, draft: _PanelLobbyDraft, user_id: int) -> None:
+        super().__init__(timeout=180)
+        self._draft = draft
+        self._user_id = user_id
+        self._check = _PanelExtrasUserCheck(user_id)
+
+        self._agents_select = discord.ui.Select(
+            placeholder="Agentes procurados (opcional, até 2)",
+            options=agent_select_options(),
+            min_values=0,
+            max_values=2,
+        )
+        self._agents_select.callback = self._on_agents_defer
+        self.add_item(self._agents_select)
+
+        publish_btn = discord.ui.Button(label="Publicar", style=discord.ButtonStyle.success)
+        publish_btn.callback = self._on_publish
+        self.add_item(publish_btn)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await self._check.interaction_check(interaction)
+
+    async def _on_agents_defer(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+    async def _on_publish(self, interaction: discord.Interaction) -> None:
+        agents = list(self._agents_select.values)
+        await _publish_panel_draft(
+            interaction,
+            self._draft,
+            wanted_agents=agents,
+            view_to_disable=self,
+        )
+
+
+class PanelPostStyleView(discord.ui.View):
+    """Escolha simples vs detalhado antes do formulário."""
+
+    def __init__(self, panel: CreateGroupPanelView) -> None:
+        super().__init__(timeout=120)
+        self._panel = panel
+
+    @discord.ui.button(
+        label="Simples",
+        style=discord.ButtonStyle.primary,
+        row=0,
+    )
+    async def simple(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(SimpleCreateGroupModal(self._panel))
+
+    @discord.ui.button(
+        label="Detalhado",
+        style=discord.ButtonStyle.secondary,
+        row=0,
+    )
+    async def detailed(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(CreateGroupModal(self._panel))
+
+
+class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
+    vagas = discord.ui.TextInput(
+        label="Quantas vagas? (1 a 4)",
+        placeholder="2",
+        default="2",
+        min_length=1,
+        max_length=1,
+        required=True,
+    )
+    codigo = discord.ui.TextInput(
+        label="Código da party",
+        placeholder="ABC123",
+        required=True,
+        max_length=32,
+    )
+    rank = discord.ui.TextInput(
+        label="Rank (opcional)",
+        placeholder="Gold ou Plat–Diamond",
+        required=False,
+        max_length=64,
+    )
+
+    def __init__(self, panel: CreateGroupPanelView) -> None:
+        super().__init__()
+        self._panel = panel
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        slots = parse_panel_slots(self.vagas.value)
+        if slots is None:
+            await interaction.response.send_message(
+                "Vagas inválidas — escolhe um número de **1** a **4**.",
+                ephemeral=True,
+            )
+            return
+        party_code = self.codigo.value.strip().upper()
+        if not party_code:
+            await interaction.response.send_message(
+                "Indica o **código da party**.",
+                ephemeral=True,
+            )
+            return
+        min_rank = parse_optional_panel_rank(self.rank.value)
+        max_rank: str | None = None
+        if interaction.user is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("Só no servidor.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        await execute_panel_lobby_create(
+            interaction,
+            self._panel,
+            slots=slots,
+            party_code=party_code,
+            min_rank=min_rank,
+            max_rank=max_rank,
+            party_code_public=True,
+            ranks_verified=False,
+            wanted_agents=[],
+            post_style=POST_STYLE_SIMPLE,
         )
 
 
@@ -459,7 +771,11 @@ class CreateGroupPanelView(discord.ui.View):
                 ephemeral=True,
             )
             return
-        await interaction.response.send_modal(CreateGroupModal(self))
+        await interaction.response.send_message(
+            "**Simples** (recomendado) ou **Detalhado**?",
+            view=PanelPostStyleView(self),
+            ephemeral=True,
+        )
 
 
 def register_create_panel_view(

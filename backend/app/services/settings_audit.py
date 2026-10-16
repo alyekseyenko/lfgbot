@@ -98,7 +98,12 @@ def _values_equal(key: str, old: object, new: object) -> bool:
         return _norm_int_list(old) == _norm_int_list(new)
     if key in ("rank_embed_colors", "immune_embed_tiers"):
         return _norm_json(old) == _norm_json(new)
-    if key in ("stats_channel_id", "log_channel_id", "announce_channel_id"):
+    if key in (
+        "stats_channel_id",
+        "log_channel_id",
+        "announce_channel_id",
+        "guide_channel_id",
+    ):
         return _channel_id_as_int(old) == _channel_id_as_int(new)
     return old == new
 
@@ -164,6 +169,21 @@ def build_dashboard_settings_audit(
 
     if "announce_channel_id" in keys:
         lines.append(f"• Anúncios: {_channel_ref(changed.get('announce_channel_id'))}")
+
+    if "guide_channel_id" in keys:
+        lines.append(f"• Canal do guia: {_channel_ref(changed.get('guide_channel_id'))}")
+
+    if "guide_body" in keys:
+        lines.append("• Texto do guia LFG atualizado")
+
+    if "stats_legacy_lobbies_created" in keys:
+        lines.append(
+            f"• Histórico (pedidos): **{int(changed['stats_legacy_lobbies_created'])}**"
+        )
+    if "stats_legacy_joins" in keys:
+        lines.append(f"• Histórico (entradas): **{int(changed['stats_legacy_joins'])}**")
+    if "stats_legacy_users" in keys:
+        lines.append(f"• Histórico (utilizadores): **{int(changed['stats_legacy_users'])}**")
 
     toggles: list[str] = []
     if "auto_format_messages" in keys:

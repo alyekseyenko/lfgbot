@@ -36,6 +36,7 @@ class LobbyCreateParams:
     party_code_public: bool = True
     wanted_agents: list[str] = ()
     ranks_verified: bool = False
+    post_style: str = "simple"
 
 
 def _rank_summary(min_rank: str | None, max_rank: str | None) -> str:
@@ -92,6 +93,7 @@ async def begin_lobby_create(
                 party_code_public=params.party_code_public,
                 wanted_agents=list(params.wanted_agents),
                 ranks_verified=params.ranks_verified,
+                post_style=params.post_style,
                 reference=reference,
                 guild_config=guild_config,
                 create_source=create_source,
@@ -215,6 +217,7 @@ class ReplaceLobbyView(discord.ui.View):
                 reference=self._reference,
                 guild_config=self._guild_config,
                 create_source=self._create_source,
+                post_style=self._params.post_style,
             )
         except (SearchBlockedError, HostRecreateBlockedError, PartyCodeInUseError) as exc:
             await interaction.followup.send(str(exc), ephemeral=True)

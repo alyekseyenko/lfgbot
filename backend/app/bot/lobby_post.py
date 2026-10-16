@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.bot.embeds import allowed_mentions_for_roles, build_lobby_embed
 from app.bot.lfg_panel import notify_panel_sticky_after_lobby
 from app.bot.members import fetch_guild_member, upsert_user_from_member
-from app.bot.views import LobbyView
+from app.bot.views import make_lobby_view
+from app.services.lobby_post_style import normalize_post_style
 from app.core.config import Settings
 from app.core.events import EventBus
 from app.services import lobbies as lobby_service
@@ -37,6 +38,7 @@ async def publish_lobby(
     reference: discord.Message | None = None,
     guild_config: GuildConfigService | None = None,
     create_source: str = "unknown",
+    post_style: str = "simple",
 ) -> discord.Message:
     ttl_minutes = settings.lobby_ttl_minutes
     if guild_config is not None and isinstance(channel, discord.abc.GuildChannel):
@@ -65,6 +67,7 @@ async def publish_lobby(
                 expires_in=expires_in,
                 discord_guild_id=discord_guild_id,
                 create_source=create_source,
+                post_style=normalize_post_style(post_style),
             )
 
     lobby_detail = await _load_lobby(session_factory, lobby.id)
@@ -87,7 +90,8 @@ async def publish_lobby(
         embed_style=embed_style,
         host_member=host_member,
     )
-    view = LobbyView(lobby.id)
+    style = normalize_post_style(post_style)
+    view = make_lobby_view(lobby.id, style)
     view.bind(session_factory, event_bus, guild_config)
     view.refresh_buttons("open", slots)
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import discord
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -72,8 +74,28 @@ def create_api_app(
         body, content_type = metrics_payload()
         return Response(content=body, media_type=content_type)
 
-    static_dir = Path(__file__).resolve().parents[3] / "frontend" / "dist"
-    if static_dir.is_dir():
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="spa")
+    static_candidates: list[Path] = []
+    spa_env = os.environ.get("SPA_STATIC_DIR", "").strip()
+    if spa_env:
+        static_candidates.append(Path(spa_env))
+    static_candidates.append(Path(__file__).resolve().parents[3] / "frontend" / "dist")
+    static_dir = next((p for p in static_candidates if p.is_dir()), None)
+    if static_dir is not None:
+        assets_dir = static_dir / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="spa-assets")
+
+        @app.get("/{full_path:path}")
+        async def spa_file_or_index(full_path: str) -> FileResponse:
+            if not full_path:
+                return FileResponse(static_dir / "index.html")
+            candidate = (static_dir / full_path).resolve()
+            try:
+                candidate.relative_to(static_dir.resolve())
+            except ValueError:
+                raise HTTPException(status_code=404, detail="Not found") from None
+            if candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(static_dir / "index.html")
 
     return app

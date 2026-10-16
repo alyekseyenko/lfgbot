@@ -2,13 +2,34 @@
 
 ![CI](https://github.com/alyekseyenko/lfgbot/actions/workflows/ci.yml/badge.svg)
 
-Open-source Discord bot for **looking-for-group (LFG)** in a Portuguese Valorant community (~13k members). It turns the old habit of posting `CODE +2 @RANK` in chat into a **structured request** with embeds, buttons, and state stored in PostgreSQL.
+Open-source Discord bot for **looking-for-group (LFG)** in a Portuguese Valorant community. It replaces years of manual `CODE +2` chat posts with **structured requests** (embeds, buttons, PostgreSQL as source of truth).
 
 Repository: **https://github.com/alyekseyenko/lfgbot**
 
 Architecture and roadmap (Portuguese): [docs/PROJETO.md](docs/PROJETO.md). English deploy guides: [docs/DEPLOY_HETZNER.md](docs/DEPLOY_HETZNER.md), [docs/DEPLOY_VPS_TEST.md](docs/DEPLOY_VPS_TEST.md).
 
 **User-facing bot text is European Portuguese** (community language). This README and ops docs are in English.
+
+---
+
+## Community scale (since 2023)
+
+The server has used dedicated LFG channels since **2023** (~3–4 years of daily manual posts before this bot). Today the Discord has on the order of **~13,000 members**.
+
+Production metrics combine **historical channel activity** (configured once in guild settings) with **live data** recorded by the bot after rollout:
+
+| Metric | Lifetime total (approx.) | Meaning |
+|--------|-------------------------|---------|
+| **Group requests** | **384,931+** | Times someone looked for a team (legacy channel posts + bot `lobbies` since deploy). |
+| **Joins** | **1,154,793+** | Times players joined a request (**Entrar** / lobby members); legacy estimate ≈ 3× requests. |
+| **Players** | **8,200+** | Distinct people who used LFG (legacy estimate + Discord IDs stored by the bot). |
+
+The `+` counts **bot-tracked** activity on top of the legacy baseline. Staff can tune baselines in the web admin (**Histórico antes do bot**); `/lfg-stats` and the dashboard show **period** stats (e.g. last 30 days) separately.
+
+| | |
+|--|--|
+| **Bot in production** | 2025–2026 (Docker on VPS; monolith bot + API + admin). |
+| **Open source** | This repository — self-host or adapt for your guild. |
 
 ---
 
@@ -26,13 +47,15 @@ Screenshots: [docs/images/](docs/images/).
 
 ## Features
 
-- **`/procurar`** — create LFG (slots, party code, rank range, agents, public/private code).
-- **Auto-format** — `ABC123 +2 @PLATINUM` style messages become embeds (needs **Message Content Intent**).
-- **«Criar grupo» panel** — sticky message + button (`/lfg-painel` for staff).
-- **Persistent buttons** — survive bot restarts.
-- **`/fechar`**, **`/editar`**, **`/lfg-stats`**, **`/lfg-apagar-dados`** (GDPR).
-- Optional **gamification** — `/perfil`, `/ranking`, LFG roles.
-- **Web admin** — multi-guild settings, embed themes, Valorant catalog sync (`frontend/` + OAuth).
+- **`/procurar`** — create LFG (slots, party code, rank range, agents, public/private code, verified ranks).
+- **«Criar grupo» panel** — same options as `/procurar` (sticky message + button; `/lfg-painel` to republish).
+- **Guide channel** — configurable `#guide` embed (admin + `/lfg-guia`).
+- **Auto-format** (optional) — `ABC123 +2` style messages → embeds; many servers disable chat and use panel/slash only.
+- **Persistent buttons** — Join / Leave survive bot restarts.
+- **`/fechar`**, **`/editar`**, **`/perfil`**, **`/ranking`**, **`/lfg-stats`**, **`/lfg-apagar-dados`** (GDPR).
+- **Moderation** — private-party leave cooldowns, host recreate delay, VIP embed tiers, audit log channel.
+- Optional **gamification** — completions, leaderboard.
+- **Web admin** — channels, embeds, metrics, Valorant catalog sync (`frontend/` + OAuth).
 
 ---
 

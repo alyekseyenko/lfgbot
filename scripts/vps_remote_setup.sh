@@ -8,6 +8,12 @@ if [ ! -f .env ]; then
   echo "Missing .env — copy .env.example and set DISCORD_TOKEN, POSTGRES_PASSWORD, guild/channel IDs."
   exit 1
 fi
+if command -v npm >/dev/null 2>&1; then
+  echo "Building admin SPA (frontend/dist)..."
+  (cd frontend && npm ci && npm run build)
+else
+  echo "WARN: npm not found — admin UI needs frontend/dist (install Node 20+ or build locally and rsync dist/)."
+fi
 $COMPOSE build app
 $COMPOSE up -d
 echo "Logs: $COMPOSE logs -f app --tail 40"

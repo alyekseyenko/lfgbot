@@ -31,8 +31,15 @@ from app.services.errors import (
 )
 from app.services.gamification import last_completion_at, profile_stats, recent_completions
 from app.services.guild_config import GuildConfigService, GuildRuntimeConfig
-from app.services.guild_stats import guild_lobby_stats
+from app.db.models import GuildSettings
+from app.services.guild_stats import guild_lobby_stats, guild_lobby_stats_lifetime
 from app.services.lobby_patch import LobbyHostPatch
+from app.services.lobby_post_style import (
+    POST_STYLE_INTERACTIVE,
+    POST_STYLE_SIMPLE,
+    is_simple_post_style,
+    normalize_post_style,
+)
 from app.services.lobby_source import LOBBY_SOURCE_CHAT, LOBBY_SOURCE_SLASH
 from app.services.ranks import AGENT_ROLES, VALORANT_RANKS
 from app.services.user_privacy import delete_user_personal_data, user_exists
@@ -72,6 +79,17 @@ RANKS_MODE_CHOICES = [
     app_commands.Choice(name="Verificados (bloqueia ao entrar)", value="verified"),
 ]
 
+POST_STYLE_CHOICES = [
+    app_commands.Choice(
+        name="Simples (código no canal, só Fechar)",
+        value=POST_STYLE_SIMPLE,
+    ),
+    app_commands.Choice(
+        name="Detalhado (Entrar/Sair e opções)",
+        value=POST_STYLE_INTERACTIVE,
+    ),
+]
+
 
 class LfgCog(commands.Cog):
     def __init__(
@@ -109,6 +127,7 @@ class LfgCog(commands.Cog):
         description="Criar um pedido de grupo (LFG). O modo segue o canal (ex.: unrated no nome).",
     )
     @app_commands.describe(
+        tipo="Simples (padrão) ou detalhado com Entrar/Sair",
         vagas="Quantas pessoas precisas (1 a 4, padrão 2)",
         codigo="Código da party (opcional)",
         ranks_modo="Ranks informativos ou verificados (padrão: informativos)",
@@ -119,6 +138,7 @@ class LfgCog(commands.Cog):
         agente_2="Outro agente (opcional)",
     )
     @app_commands.choices(
+        tipo=POST_STYLE_CHOICES,
         rank_minimo=RANK_CHOICES,
         rank_maximo=RANK_CHOICES,
         codigo_visibilidade=CODE_VISIBILITY_CHOICES,
@@ -129,6 +149,7 @@ class LfgCog(commands.Cog):
     async def procurar(
         self,
         interaction: discord.Interaction,
+        tipo: app_commands.Choice[str] | None = None,
         vagas: app_commands.Range[int, 1, 4] = 2,
         codigo: str | None = None,
         ranks_modo: app_commands.Choice[str] | None = None,
@@ -168,13 +189,20 @@ class LfgCog(commands.Cog):
         else:
             mode = runtime.default_lfg_mode if runtime else self.settings.default_lfg_mode
 
-        visibility = codigo_visibilidade.value if codigo_visibilidade else "public"
-        ranks_verified = ranks_modo is not None and ranks_modo.value == "verified"
-        wanted_agents: list[str] = []
-        if agente_1:
-            wanted_agents.append(agente_1.value)
-        if agente_2 and agente_2.value not in wanted_agents:
-            wanted_agents.append(agente_2.value)
+        post_style = normalize_post_style(tipo.value if tipo else None)
+        simple = is_simple_post_style(post_style)
+        if simple:
+            visibility = "public"
+            ranks_verified = False
+            wanted_agents: list[str] = []
+        else:
+            visibility = codigo_visibilidade.value if codigo_visibilidade else "public"
+            ranks_verified = ranks_modo is not None and ranks_modo.value == "verified"
+            wanted_agents: list[str] = []
+            if agente_1:
+                wanted_agents.append(agente_1.value)
+            if agente_2 and agente_2.value not in wanted_agents:
+                wanted_agents.append(agente_2.value)
 
         params = LobbyCreateParams(
             mode=mode,
@@ -185,6 +213,7 @@ class LfgCog(commands.Cog):
             party_code_public=visibility == "public",
             wanted_agents=wanted_agents,
             ranks_verified=ranks_verified,
+            post_style=post_style,
         )
 
         try:
@@ -348,11 +377,23 @@ class LfgCog(commands.Cog):
         runtime = await self._guild_runtime(interaction.guild.id)
         channel_ids = list(runtime.lfg_channel_ids) if runtime else []
         async with self.session_factory() as session:
+            legacy_row = await session.get(GuildSettings, interaction.guild.id)
+            legacy_lobbies = int(legacy_row.stats_legacy_lobbies_created or 0) if legacy_row else 0
+            legacy_joins = int(legacy_row.stats_legacy_joins or 0) if legacy_row else 0
+            legacy_users = int(legacy_row.stats_legacy_users or 0) if legacy_row else 0
             stats = await guild_lobby_stats(
                 session,
                 discord_guild_id=interaction.guild.id,
                 channel_ids=channel_ids,
                 days=int(dias),
+            )
+            lifetime = await guild_lobby_stats_lifetime(
+                session,
+                discord_guild_id=interaction.guild.id,
+                channel_ids=channel_ids,
+                legacy_lobbies=legacy_lobbies,
+                legacy_joins=legacy_joins,
+                legacy_users=legacy_users,
             )
 
         by_source = stats["created_by_source"]
@@ -361,6 +402,8 @@ class LfgCog(commands.Cog):
             f"• Pedidos criados: **{stats['lobbies_created_period']}**",
             f"  └ `/procurar`: {by_source['slash']} · painel: {by_source['panel']} · "
             f"chat: {by_source['chat']} · outro: {by_source['unknown']}",
+            f"• **Desde sempre** (bot + histórico): pedidos **{lifetime['lobbies_created_lifetime']}** · "
+            f"entradas **{lifetime['joins_lifetime']}** · utilizadores **{lifetime['users_lifetime']}**",
             f"• Ativos agora: **{stats['active_lobbies']}**",
             f"• Entradas em lobbies: **{stats['joins_period']}**",
             f"• Grupos cheios (filled): **{stats['groups_filled_period']}**",
@@ -370,6 +413,31 @@ class LfgCog(commands.Cog):
             f"• Tempo médio até fechar/expirar: **{stats['avg_minutes_to_end']}** min",
         ]
         await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+    @app_commands.command(
+        name="lfg-guia",
+        description="Publicar ou atualizar o guia de uso do LFG no canal configurado.",
+    )
+    @app_commands.default_permissions(manage_guild=True)
+    async def lfg_guia(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message("Só no servidor.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        from app.bot.guide_channel import publish_guild_guide
+
+        ok = await publish_guild_guide(self.bot, self.session_factory, interaction.guild.id)
+        if not ok:
+            await interaction.followup.send(
+                "Define primeiro o **canal do guia** no dashboard /admin e guarda.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            "Guia publicado ou atualizado no canal configurado. Fixa a mensagem no topo, se quiseres.",
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="lfg-apagar-dados",

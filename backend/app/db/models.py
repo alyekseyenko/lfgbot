@@ -67,6 +67,18 @@ class GuildSettings(Base):
     )
     stats_channel_id: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     log_channel_id: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    guide_channel_id: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    guide_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    guide_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stats_legacy_lobbies_created: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="384931"
+    )
+    stats_legacy_joins: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="1154793"
+    )
+    stats_legacy_users: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="8200"
+    )
     panel_sticky_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
@@ -246,6 +258,7 @@ class Lobby(Base):
     channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     create_source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="unknown")
+    post_style: Mapped[str] = mapped_column(String(16), nullable=False, server_default="simple")
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

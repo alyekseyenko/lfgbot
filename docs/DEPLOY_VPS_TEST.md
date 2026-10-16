@@ -28,11 +28,34 @@ Health (on the VPS): `curl -s http://127.0.0.1:8010/health/ready`
 
 Stop the bot on your PC before starting on the VPS (`docker compose stop app`). The same Discord token cannot run twice.
 
-## Admin dashboard (optional, private)
+## Admin dashboard
 
-For OAuth you need **HTTPS + a domain** in the Discord Developer Portal (`OAUTH_REDIRECT_URI`, `PUBLIC_APP_URL`). Raw IP-only admin login is unreliable.
+The API serves the built SPA from `frontend/dist` (see `SPA_STATIC_DIR` in compose). After deploy, build once on the VPS (`npm ci && npm run build` in `frontend/`) or upload `frontend/dist` from your PC.
 
-For a quick API test without the web UI, configure guild channels via `.env` and use Discord commands; use the dashboard later behind nginx + subdomain.
+### A) SSH tunnel (no public URL)
+
+On your PC:
+
+```bash
+ssh -L 8010:127.0.0.1:8010 root@167.233.121.62
+```
+
+Open **http://localhost:8010/admin** (same tab; API + UI on port 8010).
+
+In the VPS `.env` (for OAuth to work over the tunnel):
+
+```env
+PUBLIC_APP_URL=http://localhost:8010
+OAUTH_REDIRECT_URI=http://localhost:8010/auth/discord/callback
+```
+
+Add the same redirect URL in the [Discord Developer Portal](https://discord.com/developers/applications) → OAuth2 → Redirects. Restart the app after changing `.env`.
+
+### B) Nginx + HTTPS (production)
+
+Point a subdomain (e.g. `lfg.example.com`) to the VPS, proxy to `127.0.0.1:8010`, set `PUBLIC_APP_URL` and `OAUTH_REDIRECT_URI` to `https://lfg.example.com/...`, and register that redirect in Discord.
+
+Without OAuth you can still use Discord slash commands (`/lfg-painel`, `/lfg-guia`, `/lfg-stats`).
 
 ## Updates
 

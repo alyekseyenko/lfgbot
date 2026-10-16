@@ -32,7 +32,8 @@ from app.api.snowflake import (
     snowflake_list_to_str,
     snowflake_to_str,
 )
-from app.services.guild_stats import guild_lobby_stats
+from app.services.guide_content import normalize_guide_body
+from app.services.guild_stats import guild_lobby_stats, guild_lobby_stats_lifetime
 from app.services.guild_valorant_agents import (
     list_guild_agent_role_mappings,
     replace_guild_agent_role_mappings,
@@ -167,6 +168,11 @@ def _settings_to_out(row) -> GuildSettingsOut:
         search_penalty_severe_hours=int(row.search_penalty_severe_hours or 12),
         host_recreate_cooldown_seconds=int(row.host_recreate_cooldown_seconds or 300),
         immune_host_recreate_cooldown_seconds=int(row.immune_host_recreate_cooldown_seconds or 10),
+        guide_channel_id=snowflake_to_str(int(row.guide_channel_id or 0)),
+        guide_body=row.guide_body,
+        stats_legacy_lobbies_created=int(row.stats_legacy_lobbies_created or 0),
+        stats_legacy_joins=int(row.stats_legacy_joins or 0),
+        stats_legacy_users=int(row.stats_legacy_users or 0),
     )
 
 
@@ -351,6 +357,20 @@ async def patch_settings(
         patch_kwargs["immune_host_recreate_cooldown_seconds"] = (
             body.immune_host_recreate_cooldown_seconds
         )
+    if body.guide_channel_id is not None:
+        patch_kwargs["guide_channel_id"] = (
+            0
+            if body.guide_channel_id in ("", "0")
+            else parse_snowflake(body.guide_channel_id, field="guide_channel_id")
+        )
+    if body.guide_body is not None:
+        patch_kwargs["guide_body"] = normalize_guide_body(body.guide_body)
+    if body.stats_legacy_lobbies_created is not None:
+        patch_kwargs["stats_legacy_lobbies_created"] = body.stats_legacy_lobbies_created
+    if body.stats_legacy_joins is not None:
+        patch_kwargs["stats_legacy_joins"] = body.stats_legacy_joins
+    if body.stats_legacy_users is not None:
+        patch_kwargs["stats_legacy_users"] = body.stats_legacy_users
     async with state.session_factory() as session:
         async with session.begin():
             await state.guild_config.upsert_guild(
@@ -386,6 +406,21 @@ async def patch_settings(
                 )
         except Exception:
             logger.exception("falha ao sincronizar painel LFG no servidor %s", gid)
+    guide_sync = changed_kwargs and (
+        "guide_channel_id" in changed_kwargs or "guide_body" in changed_kwargs
+    )
+    if (
+        guide_sync
+        and (out.guide_channel_id or "0") not in ("", "0")
+        and isinstance(state.bot, commands.Bot)
+        and state.bot.is_ready()
+    ):
+        from app.bot.guide_channel import publish_guild_guide
+
+        try:
+            await publish_guild_guide(state.bot, state.session_factory, gid)
+        except Exception:
+            logger.exception("falha ao publicar guia LFG no servidor %s", gid)
     if changed_kwargs and isinstance(state.bot, discord.Client) and state.bot.is_ready():
         from app.bot.guild_audit_log import send_guild_audit_log
 
@@ -557,6 +592,31 @@ async def put_valorant_agent_roles(
     ]
 
 
+@router.post("/guilds/{guild_id}/guide/publish")
+async def publish_guild_guide_route(
+    guild_id: str,
+    state: ApiStateDep,
+    user: SessionUserDep,
+) -> dict[str, str]:
+    gid = _guild_id_param(guild_id)
+    await _assert_manage_guild(user, gid)
+    if not isinstance(state.bot, commands.Bot) or not state.bot.is_ready():
+        raise HTTPException(status_code=503, detail="O bot Discord não está ligado.")
+    async with state.session_factory() as session:
+        row = await state.guild_config.ensure_default_settings(session, gid)
+        if int(row.guide_channel_id or 0) <= 0:
+            raise HTTPException(status_code=400, detail="Canal do guia não configurado.")
+    from app.bot.guide_channel import publish_guild_guide
+
+    ok = await publish_guild_guide(state.bot, state.session_factory, gid)
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail="Não foi possível publicar no canal (permissões ou canal inválido).",
+        )
+    return {"status": "ok"}
+
+
 @router.get("/guilds/{guild_id}/stats", response_model=GuildStatsOut)
 async def guild_stats(
     guild_id: str,
@@ -568,11 +628,20 @@ async def guild_stats(
     await _assert_manage_guild(user, gid)
     async with state.session_factory() as session:
         config = await state.guild_config.get_config(session, gid)
+        row = await state.guild_config.ensure_default_settings(session, gid)
         stats = await guild_lobby_stats(
             session,
             discord_guild_id=gid,
             channel_ids=list(config.lfg_channel_ids),
             days=days,
+        )
+        lifetime = await guild_lobby_stats_lifetime(
+            session,
+            discord_guild_id=gid,
+            channel_ids=list(config.lfg_channel_ids),
+            legacy_lobbies=int(row.stats_legacy_lobbies_created or 0),
+            legacy_joins=int(row.stats_legacy_joins or 0),
+            legacy_users=int(row.stats_legacy_users or 0),
         )
     by_source = stats["created_by_source"]
     return GuildStatsOut(
@@ -586,4 +655,13 @@ async def guild_stats(
         avg_minutes_to_end=float(stats["avg_minutes_to_end"]),
         created_by_source=by_source,
         period_days=days,
+        lobbies_created_lifetime=int(lifetime["lobbies_created_lifetime"]),
+        joins_lifetime=int(lifetime["joins_lifetime"]),
+        users_lifetime=int(lifetime["users_lifetime"]),
+        lobbies_created_bot=int(lifetime["lobbies_created_bot"]),
+        joins_bot=int(lifetime["joins_bot"]),
+        users_bot=int(lifetime["users_bot"]),
+        stats_legacy_lobbies_created=int(row.stats_legacy_lobbies_created or 0),
+        stats_legacy_joins=int(row.stats_legacy_joins or 0),
+        stats_legacy_users=int(row.stats_legacy_users or 0),
     )

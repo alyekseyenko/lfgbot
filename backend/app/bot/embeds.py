@@ -11,6 +11,7 @@ from app.bot.discord_roles import (
 )
 from app.db.models import Lobby, LobbyMember, LobbyState, User
 from app.services.agents import parse_wanted_agents_csv
+from app.services.lobby_post_style import is_simple_post_style
 from app.services.lfg_embed_style import (
     DEFAULT_AUTHOR_PREFIX,
     DEFAULT_FOOTER_SUFFIX,
@@ -26,6 +27,7 @@ from app.services.lfg_embed_style import (
 )
 
 PORTUGAL = ZoneInfo("Europe/Lisbon")
+DEFAULT_LOBBY_SIMPLE_HINT = "Junta-te no jogo com o código — sem lista nesta mensagem."
 
 # Fallbacks quando não há estilo de guild (ex. testes).
 COLOUR_COMPETITIVE = discord.Colour(0xFF4655)
@@ -129,8 +131,9 @@ def build_lobby_embed(
     host_member: discord.Member | None = None,
 ) -> LobbyEmbedBuild:
     mention_ids: list[int] = []
+    simple_post = is_simple_post_style(getattr(lobby, "post_style", None))
     members = _active_members(lobby)
-    joined = len(members)
+    joined = len(members) if not simple_post else 0
     decorative = embed_style.decorative if embed_style is not None else True
     mode_colour = _mode_colour(lobby.mode, embed_style)
     full_colour, inactive_colour = state_colours_from_style(embed_style)
@@ -185,7 +188,7 @@ def build_lobby_embed(
     )
     if inactive:
         description = f"{inactive_lead}\n{host_line}"
-    elif lobby.state == LobbyState.open and decorative:
+    elif lobby.state == LobbyState.open and decorative and not simple_post:
         cta = embed_custom_text(embed_style, "lobby_cta_open", DEFAULT_LOBBY_CTA_OPEN)
         description = f"{description}\n\n{cta}"
 
@@ -205,11 +208,20 @@ def build_lobby_embed(
             icon_url=author_icon,
         )
 
+    if simple_post and not inactive:
+        simple_hint = embed_custom_text(
+            embed_style, "lobby_simple_hint", DEFAULT_LOBBY_SIMPLE_HINT
+        )
+        description = f"{description}\n\n_{simple_hint}_"
     embed.description = description
 
+    if simple_post:
+        slots_value = f"**{lobby.slots}** vagas"
+    else:
+        slots_value = _slots_meter(joined, lobby.slots, decorative)
     embed.add_field(
         name=_embed_field_label(embed_style, "field_slots", "Vagas", decorative, "🎯"),
-        value=_strike_main_text(_slots_meter(joined, lobby.slots, decorative), inactive),
+        value=_strike_main_text(slots_value, inactive),
         inline=True,
     )
     embed.add_field(
@@ -220,13 +232,14 @@ def build_lobby_embed(
         ),
         inline=True,
     )
-    embed.add_field(
-        name=_embed_field_label(
-            embed_style, "field_code_visibility", "Código", decorative, "🔒"
-        ),
-        value=_strike_main_text(f"**{visibility}**", inactive),
-        inline=True,
-    )
+    if not simple_post:
+        embed.add_field(
+            name=_embed_field_label(
+                embed_style, "field_code_visibility", "Código", decorative, "🔒"
+            ),
+            value=_strike_main_text(f"**{visibility}**", inactive),
+            inline=True,
+        )
 
     if lobby.min_rank or lobby.max_rank:
         if lobby.min_rank and lobby.max_rank:
@@ -247,13 +260,22 @@ def build_lobby_embed(
                 guild, lobby.max_rank, mention_ids, role_mappings=role_mappings
             )
             rank_value = f"máx. {max_label or lobby.max_rank}"
-        rank_mode = "verificados" if lobby.ranks_verified else "informativos"
-        rank_field_default = f"Ranks ({rank_mode})"
+        if simple_post:
+            rank_field_default = "Rank"
+        else:
+            rank_mode = "verificados" if lobby.ranks_verified else "informativos"
+            rank_field_default = f"Ranks ({rank_mode})"
         embed.add_field(
             name=_embed_field_label(
                 embed_style, "field_ranks", rank_field_default, decorative, "🏅"
             ),
             value=_strike_main_text(rank_value, inactive),
+            inline=False,
+        )
+    elif simple_post and not inactive:
+        embed.add_field(
+            name=_embed_field_label(embed_style, "field_ranks", "Rank", decorative, "🏅"),
+            value=_strike_main_text("Qualquer", inactive),
             inline=False,
         )
 
@@ -278,7 +300,7 @@ def build_lobby_embed(
             embed.set_thumbnail(url=fallback_thumb)
 
     wanted_agents = parse_wanted_agents_csv(lobby.wanted_agents)
-    if wanted_agents:
+    if wanted_agents and not simple_post:
         agent_value = agents_labels_for_guild(
             guild, wanted_agents, mention_ids, role_mappings=role_mappings
         )
@@ -290,7 +312,7 @@ def build_lobby_embed(
             inline=False,
         )
 
-    if lobby.party_code and lobby.party_code_public:
+    if lobby.party_code and (lobby.party_code_public or simple_post):
         code_display = (
             _strike_main_text(lobby.party_code, inactive)
             if inactive
@@ -323,31 +345,39 @@ def build_lobby_embed(
             inline=False,
         )
 
-    if members:
-        lines = [
-            _player_line(guild, m.user, mention_ids, role_mappings=role_mappings) for m in members
-        ]
-        players_value = _strike_main_text("\n".join(lines), inactive)
-        embed.add_field(
-            name=_embed_field_label(embed_style, "field_players", "Jogadores", decorative, "👥"),
-            value=players_value,
-            inline=False,
-        )
-    elif inactive:
-        embed.add_field(
-            name=_embed_field_label(embed_style, "field_players", "Jogadores", decorative, "👥"),
-            value=_strike_main_text("_Lista final do grupo._", True),
-            inline=False,
-        )
-    else:
-        empty_players = embed_custom_text(
-            embed_style, "lobby_empty_players", DEFAULT_LOBBY_EMPTY_PLAYERS
-        )
-        embed.add_field(
-            name=_embed_field_label(embed_style, "field_players", "Jogadores", decorative, "👥"),
-            value=empty_players,
-            inline=False,
-        )
+    if not simple_post:
+        if members:
+            lines = [
+                _player_line(guild, m.user, mention_ids, role_mappings=role_mappings)
+                for m in members
+            ]
+            players_value = _strike_main_text("\n".join(lines), inactive)
+            embed.add_field(
+                name=_embed_field_label(
+                    embed_style, "field_players", "Jogadores", decorative, "👥"
+                ),
+                value=players_value,
+                inline=False,
+            )
+        elif inactive:
+            embed.add_field(
+                name=_embed_field_label(
+                    embed_style, "field_players", "Jogadores", decorative, "👥"
+                ),
+                value=_strike_main_text("_Lista final do grupo._", True),
+                inline=False,
+            )
+        else:
+            empty_players = embed_custom_text(
+                embed_style, "lobby_empty_players", DEFAULT_LOBBY_EMPTY_PLAYERS
+            )
+            embed.add_field(
+                name=_embed_field_label(
+                    embed_style, "field_players", "Jogadores", decorative, "👥"
+                ),
+                value=empty_players,
+                inline=False,
+            )
 
     short_id = str(lobby.id).split("-")[0]
     brand = (

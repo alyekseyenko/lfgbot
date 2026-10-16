@@ -24,6 +24,9 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lfg}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lfg}
+      SPA_STATIC_DIR: /spa
+    volumes:
+      - ./frontend/dist:/spa:ro
     ports:
       - "127.0.0.1:8010:8000"
     depends_on:

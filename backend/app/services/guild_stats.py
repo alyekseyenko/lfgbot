@@ -6,7 +6,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
-from app.db.models import Lobby, LobbyCompletion, LobbyMember, LobbyState
+from app.db.models import Lobby, LobbyCompletion, LobbyMember, LobbyState, User
 from app.services.lobby_source import (
     LOBBY_SOURCE_CHAT,
     LOBBY_SOURCE_PANEL,
@@ -143,4 +143,53 @@ async def guild_lobby_stats(
         "avg_minutes_to_fill": round(float(avg_fill or 0.0), 1),
         "avg_minutes_to_end": round(float(avg_end or 0.0), 1),
         "created_by_source": created_by_source,
+    }
+
+
+async def guild_lobby_stats_lifetime(
+    session: AsyncSession,
+    *,
+    discord_guild_id: int,
+    channel_ids: list[int],
+    legacy_lobbies: int = 0,
+    legacy_joins: int = 0,
+    legacy_users: int = 0,
+) -> dict[str, int]:
+    """Totais desde o início do bot + offsets «legado» (histórico manual no admin)."""
+    scope = _guild_lobby_scope(discord_guild_id, channel_ids)
+
+    lobbies_result = await session.execute(select(func.count()).select_from(Lobby).where(scope))
+    joins_result = await session.execute(
+        select(func.count())
+        .select_from(LobbyMember)
+        .join(Lobby, Lobby.id == LobbyMember.lobby_id)
+        .where(scope)
+    )
+    hosts_result = await session.execute(select(Lobby.host_id).where(scope).distinct())
+    members_result = await session.execute(
+        select(LobbyMember.user_id)
+        .select_from(LobbyMember)
+        .join(Lobby, Lobby.id == LobbyMember.lobby_id)
+        .where(scope)
+        .distinct()
+    )
+    user_ids = {int(row[0]) for row in hosts_result.all()} | {
+        int(row[0]) for row in members_result.all()
+    }
+    users_in_db = 0
+    if user_ids:
+        users_result = await session.execute(
+            select(func.count()).select_from(User).where(User.discord_id.in_(user_ids))
+        )
+        users_in_db = int(users_result.scalar_one())
+
+    bot_lobbies = int(lobbies_result.scalar_one())
+    bot_joins = int(joins_result.scalar_one())
+    return {
+        "lobbies_created_lifetime": max(0, legacy_lobbies) + bot_lobbies,
+        "joins_lifetime": max(0, legacy_joins) + bot_joins,
+        "users_lifetime": max(0, legacy_users) + users_in_db,
+        "lobbies_created_bot": bot_lobbies,
+        "joins_bot": bot_joins,
+        "users_bot": users_in_db,
     }

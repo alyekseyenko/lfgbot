@@ -479,6 +479,11 @@ class GuildConfigService:
         search_penalty_severe_hours: int | None = None,
         host_recreate_cooldown_seconds: int | None = None,
         immune_host_recreate_cooldown_seconds: int | None = None,
+        guide_channel_id: int | None = None,
+        guide_body: str | None | object = ...,
+        stats_legacy_lobbies_created: int | None = None,
+        stats_legacy_joins: int | None = None,
+        stats_legacy_users: int | None = None,
     ) -> GuildSettings:
         row = await self.ensure_default_settings(session, guild_id)
         if lfg_channel_ids is not None:
@@ -613,6 +618,24 @@ class GuildConfigService:
             row.immune_host_recreate_cooldown_seconds = clamp_host_recreate_seconds(
                 immune_host_recreate_cooldown_seconds
             )
+        if guide_channel_id is not None:
+            new_channel = max(0, int(guide_channel_id))
+            if int(row.guide_channel_id or 0) != new_channel:
+                row.guide_message_id = 0
+            row.guide_channel_id = new_channel
+        if guide_body is not ...:
+            from app.services.guide_content import normalize_guide_body
+
+            if guide_body is None:
+                row.guide_body = None
+            else:
+                row.guide_body = normalize_guide_body(str(guide_body))
+        if stats_legacy_lobbies_created is not None:
+            row.stats_legacy_lobbies_created = max(0, int(stats_legacy_lobbies_created))
+        if stats_legacy_joins is not None:
+            row.stats_legacy_joins = max(0, int(stats_legacy_joins))
+        if stats_legacy_users is not None:
+            row.stats_legacy_users = max(0, int(stats_legacy_users))
         await session.flush()
         self.invalidate(guild_id)
         return row

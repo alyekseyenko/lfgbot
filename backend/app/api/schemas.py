@@ -67,6 +67,11 @@ class GuildSettingsOut(BaseModel):
     search_penalty_severe_hours: int = Field(default=12, ge=1, le=168)
     host_recreate_cooldown_seconds: int = Field(default=300, ge=0, le=86400)
     immune_host_recreate_cooldown_seconds: int = Field(default=10, ge=0, le=86400)
+    guide_channel_id: str = "0"
+    guide_body: str | None = None
+    stats_legacy_lobbies_created: int = Field(default=0, ge=0)
+    stats_legacy_joins: int = Field(default=0, ge=0)
+    stats_legacy_users: int = Field(default=0, ge=0)
 
 
 class GuildSettingsPatch(BaseModel):
@@ -112,6 +117,11 @@ class GuildSettingsPatch(BaseModel):
     search_penalty_severe_hours: int | None = Field(default=None, ge=1, le=168)
     host_recreate_cooldown_seconds: int | None = Field(default=None, ge=0, le=86400)
     immune_host_recreate_cooldown_seconds: int | None = Field(default=None, ge=0, le=86400)
+    guide_channel_id: str | None = None
+    guide_body: str | None = None
+    stats_legacy_lobbies_created: int | None = Field(default=None, ge=0)
+    stats_legacy_joins: int | None = Field(default=None, ge=0)
+    stats_legacy_users: int | None = Field(default=None, ge=0)
 
 
 class DiscordRoleOut(BaseModel):
@@ -155,6 +165,15 @@ class GuildStatsOut(BaseModel):
     avg_minutes_to_end: float = 0.0
     created_by_source: LobbiesBySourceOut = Field(default_factory=LobbiesBySourceOut)
     period_days: int = 30
+    lobbies_created_lifetime: int = 0
+    joins_lifetime: int = 0
+    users_lifetime: int = 0
+    lobbies_created_bot: int = 0
+    joins_bot: int = 0
+    users_bot: int = 0
+    stats_legacy_lobbies_created: int = 0
+    stats_legacy_joins: int = 0
+    stats_legacy_users: int = 0
 
 
 class InviteUrlOut(BaseModel):

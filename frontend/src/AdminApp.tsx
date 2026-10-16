@@ -698,6 +698,105 @@ export function AdminApp() {
               guardadas neste dashboard.
             </p>
           </div>
+
+          <div className="card highlight-card">
+            <h2>Canal do guia</h2>
+            <p className="hint">
+              Mensagem fixa com instruções de uso (painel <strong>Criar grupo</strong>,{" "}
+              <code>/procurar</code>, etc.). Ao <strong>guardar</strong> canal ou texto, o bot
+              publica ou atualiza a embed. Também: <code>/lfg-guia</code> no Discord.
+            </p>
+            <label className="field-stack">
+              Canal do guia
+              <select
+                value={settings.guide_channel_id || "0"}
+                onChange={(e) =>
+                  patchSettings({ guide_channel_id: e.target.value || "0" })
+                }
+              >
+                <option value="0">Desligado</option>
+                {channels.map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    #{ch.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack" style={{ marginTop: "0.75rem" }}>
+              Texto do guia (Markdown Discord)
+              <textarea
+                rows={12}
+                placeholder="Vazio = texto por defeito (resumo painel, /procurar, sem chat +2)."
+                value={settings.guide_body ?? ""}
+                onChange={(e) =>
+                  patchSettings({
+                    guide_body: e.target.value.trim() ? e.target.value : null,
+                  })
+                }
+              />
+            </label>
+            <button
+              type="button"
+              style={{ marginTop: "0.5rem" }}
+              disabled={!selectedGuild || settings.guide_channel_id === "0"}
+              onClick={() => {
+                if (!selectedGuild) return;
+                void api.publishGuildGuide(selectedGuild).then(
+                  () => setSaveNotice("Guia republicado no Discord."),
+                  (err: Error) => setSaveNotice(err.message),
+                );
+              }}
+            >
+              Republicar guia agora
+            </button>
+          </div>
+
+          <div className="card">
+            <h2>Histórico antes do bot</h2>
+            <p className="hint">
+              Números do canal antigo (não são linhas falsas na BD). Somam-se aos pedidos reais
+              registados pelo bot em «Desde sempre» nas métricas. <strong>Entradas</strong> = vezes
+              que alguém carregou <strong>Entrar</strong> num pedido (não é o mesmo que pedidos
+              criados).
+            </p>
+            <div className="options-grid">
+              <label className="field-stack">
+                Pedidos (legado)
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.stats_legacy_lobbies_created}
+                  onChange={(e) =>
+                    patchSettings({
+                      stats_legacy_lobbies_created: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label className="field-stack">
+                Entradas (legado)
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.stats_legacy_joins}
+                  onChange={(e) =>
+                    patchSettings({ stats_legacy_joins: Number(e.target.value) })
+                  }
+                />
+              </label>
+              <label className="field-stack">
+                Utilizadores (legado)
+                <input
+                  type="number"
+                  min={0}
+                  value={settings.stats_legacy_users}
+                  onChange={(e) =>
+                    patchSettings({ stats_legacy_users: Number(e.target.value) })
+                  }
+                />
+              </label>
+            </div>
+          </div>
           </>
           )}
 
@@ -1441,8 +1540,28 @@ export function AdminApp() {
             <div className="card">
               <h2>Métricas ({stats.period_days} dias)</h2>
               <p className="hint">
-                Mesmos indicadores que o comando <code>/lfg-stats</code> no Discord.
-                «Cheio» = vagas preenchidas; «completo» = critério de gamificação ao fechar.
+                Janela = últimos {stats.period_days} dias (dados reais do bot). «Desde sempre»
+                inclui o histórico manual do admin. «Cheio» = vagas preenchidas; «completo» =
+                gamificação ao fechar.
+              </p>
+              <div className="stats" style={{ marginBottom: "1rem" }}>
+                <div className="stat">
+                  <strong>{stats.lobbies_created_lifetime}</strong>
+                  Pedidos (desde sempre)
+                </div>
+                <div className="stat">
+                  <strong>{stats.joins_lifetime}</strong>
+                  Entradas (desde sempre)
+                </div>
+                <div className="stat">
+                  <strong>{stats.users_lifetime}</strong>
+                  Utilizadores (desde sempre)
+                </div>
+              </div>
+              <p className="hint">
+                Bot só: {stats.lobbies_created_bot} pedidos · {stats.joins_bot} entradas ·{" "}
+                {stats.users_bot} utilizadores · legado: {stats.stats_legacy_lobbies_created} /{" "}
+                {stats.stats_legacy_joins} / {stats.stats_legacy_users}
               </p>
               <div className="stats">
                 <div className="stat">

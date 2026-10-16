@@ -41,18 +41,14 @@ export const EMBED_PEDIDOS_TABS: { id: EmbedPedidosTab; label: string }[] = [
 
 /** Corpo fixo do painel (entre lead e CTA) quando não há descrição custom completa. */
 export const PANEL_EMBED_BODY =
-  "Clica em **Criar grupo**.\n\n" +
-  "**1.** Vagas e código da party (o essencial)\n" +
-  "**2.** Ranks opcionais em dropdown (mín. / máx., como as roles)\n" +
-  "**3.** **Publicar** — o pedido fica neste canal com Entrar / Sair\n\n" +
-  "O formulário é só para ti; o grupo é público.\n" +
-  "Ainda podes escrever no chat (`ABC123 +2`) ou usar `/procurar` para mais opções.";
+  "**Criar grupo** → **Simples** (padrão) ou **Detalhado**.\n" +
+  "Simples: código, vagas e rank — só **Fechar**. Detalhado: **Entrar** / **Sair** · ou `/procurar`.";
 
 /** Valores por omissão (alinhados com o bot). */
 export const LFG_EMBED_TEXT_DEFAULTS: Record<string, string> = {
   panel_title: "🎯 LFG — Criar grupo",
-  panel_lead: "**Procura team? Publica aqui em segundos.**",
-  panel_cta: "▸ Clica em **Criar grupo** para começar.",
+  panel_lead: "**Procura team?**",
+  panel_cta: "",
   lobby_cta_open: "👇 **Usa os botões abaixo** para entrar ou sair.",
   lobby_inactive_lead: "**Este grupo já não está ativo.**",
   lobby_empty_players: "_Ninguém na lista — **Entrar** para te juntares._",

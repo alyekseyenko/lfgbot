@@ -4,6 +4,7 @@ from app.bot.lfg_panel import (
     PANEL_EMBED_DESCRIPTION,
     PANEL_EMBED_TITLE,
     RANK_SELECT_NONE,
+    RANKS_MODE_VERIFIED,
     build_panel_embed,
     is_panel_message,
     parse_optional_panel_rank,
@@ -11,6 +12,7 @@ from app.bot.lfg_panel import (
     rank_extras_prompt,
     rank_from_select_value,
     rank_select_options,
+    ranks_mode_select_options,
 )
 
 
@@ -19,9 +21,8 @@ def test_panel_embed_describes_current_flow() -> None:
     assert PANEL_EMBED_TITLE in (embed.title or "")
     assert "🎯" in (embed.title or "")
     assert PANEL_EMBED_DESCRIPTION in (embed.description or "")
-    assert "Vagas e código" in PANEL_EMBED_DESCRIPTION
-    assert "dropdown" in PANEL_EMBED_DESCRIPTION
-    assert "Publicar" in PANEL_EMBED_DESCRIPTION
+    assert "Criar grupo" in PANEL_EMBED_DESCRIPTION
+    assert "/procurar" in PANEL_EMBED_DESCRIPTION
 
 
 def test_panel_embed_custom_brand_colour() -> None:
@@ -87,6 +88,11 @@ def test_rank_extras_prompt_highlights_slots_and_code() -> None:
     text = rank_extras_prompt(slots=2, party_code="ABC123")
     assert "**2**" in text
     assert "`ABC123`" in text
-    assert "Rank" in text or "rank" in text
+    assert "/procurar" in text
     empty = rank_extras_prompt(slots=1, party_code=None)
     assert "sem código" in empty
+
+
+def test_ranks_mode_select_includes_verified() -> None:
+    values = [opt.value for opt in ranks_mode_select_options()]
+    assert RANKS_MODE_VERIFIED in values

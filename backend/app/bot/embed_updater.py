@@ -12,7 +12,7 @@ from app.bot.embeds import (
     lobby_view_enabled,
 )
 from app.bot.members import fetch_guild_member
-from app.bot.views import LobbyView
+from app.bot.views import LobbyView, make_lobby_view
 from app.core.config import Settings
 from app.core.events import DomainEvent, EventBus, EventType
 from app.core.metrics import discord_http_errors_total, embed_edits_total, embed_events_total
@@ -206,7 +206,7 @@ class EmbedUpdater:
         if lobby_view_enabled(lobby):
             active = [m for m in lobby.members if m.left_at is None]
             free = max(0, lobby.slots - len(active))
-            view = LobbyView(lobby.id)
+            view = make_lobby_view(lobby.id, lobby.post_style)
             view.bind(self._session_factory, self._event_bus, self._guild_config)
             view.refresh_buttons(lobby.state.value, free)
 

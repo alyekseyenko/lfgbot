@@ -78,6 +78,11 @@ export type GuildSettings = {
   search_penalty_severe_hours: number;
   host_recreate_cooldown_seconds: number;
   immune_host_recreate_cooldown_seconds: number;
+  guide_channel_id: Snowflake;
+  guide_body: string | null;
+  stats_legacy_lobbies_created: number;
+  stats_legacy_joins: number;
+  stats_legacy_users: number;
 };
 export type DiscordChannel = { id: Snowflake; name: string; type: number };
 export type DiscordRole = { id: Snowflake; name: string; color: number; position: number };
@@ -147,6 +152,15 @@ export type GuildStats = {
   avg_minutes_to_end: number;
   created_by_source: LobbiesBySource;
   period_days: number;
+  lobbies_created_lifetime: number;
+  joins_lifetime: number;
+  users_lifetime: number;
+  lobbies_created_bot: number;
+  joins_bot: number;
+  users_bot: number;
+  stats_legacy_lobbies_created: number;
+  stats_legacy_joins: number;
+  stats_legacy_users: number;
 };
 
 function normalizeImmuneEmbedTiers(s: Partial<GuildSettings>): ImmuneEmbedTier[] {
@@ -246,6 +260,11 @@ export function normalizeGuildSettings(s: Partial<GuildSettings>): GuildSettings
     host_recreate_cooldown_seconds: s.host_recreate_cooldown_seconds ?? 300,
     immune_host_recreate_cooldown_seconds:
       s.immune_host_recreate_cooldown_seconds ?? 10,
+    guide_channel_id: s.guide_channel_id ?? "0",
+    guide_body: s.guide_body ?? null,
+    stats_legacy_lobbies_created: s.stats_legacy_lobbies_created ?? 0,
+    stats_legacy_joins: s.stats_legacy_joins ?? 0,
+    stats_legacy_users: s.stats_legacy_users ?? 0,
   };
 }
 
@@ -274,6 +293,8 @@ export const api = {
       body: JSON.stringify({ mappings }),
     }),
   stats: (guildId: Snowflake) => request<GuildStats>(`/guilds/${guildId}/stats`),
+  publishGuildGuide: (guildId: Snowflake) =>
+    request<{ status: string }>(`/guilds/${guildId}/guide/publish`, { method: "POST" }),
   catalogMeta: () => request<{ last_synced_at: string | null }>("/catalog/meta"),
   catalogAgents: () => request<ValorantAgent[]>("/catalog/agents"),
   catalogPlayerCards: () => request<ValorantPlayerCard[]>("/catalog/player-cards"),

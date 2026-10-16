@@ -29,6 +29,7 @@ from app.services.host_recreate_cooldown import (
     assert_can_host_create,
 )
 from app.services.lobby_patch import UNSET, LobbyHostPatch
+from app.services.lobby_post_style import POST_STYLE_INTERACTIVE, normalize_post_style
 from app.services.lobby_source import LOBBY_SOURCE_UNKNOWN, normalize_lobby_source
 from app.services.party_code import (
     assert_party_code_available_for_guild,
@@ -114,6 +115,7 @@ async def create_lobby(
     message_id: int | None = None,
     discord_guild_id: int | None = None,
     create_source: str = LOBBY_SOURCE_UNKNOWN,
+    post_style: str = POST_STYLE_INTERACTIVE,
 ) -> Lobby:
     if slots < 1 or slots > 4:
         raise ValueError("slots must be between 1 and 4")
@@ -152,6 +154,7 @@ async def create_lobby(
         channel_id=channel_id,
         message_id=message_id,
         create_source=normalize_lobby_source(create_source),
+        post_style=normalize_post_style(post_style),
     )
     session.add(lobby)
     await session.flush()
@@ -184,6 +187,8 @@ async def join_lobby(
     assert_can_search(user, now)
 
     lobby = await _get_lobby_for_update(session, lobby_id)
+    if normalize_post_style(lobby.post_style) == "simple":
+        raise LobbyNotJoinableError("Este pedido é simples — entra no jogo pelo código.")
     _ensure_joinable(lobby, now)
 
     if user.discord_id == lobby.host_id:

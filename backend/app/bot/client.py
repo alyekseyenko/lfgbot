@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.cog_lfg import setup_lfg_cog
 from app.bot.embed_updater import EmbedUpdater
+from app.bot.guide_channel import ensure_all_guild_guides
 from app.bot.lfg_panel import ensure_lfg_panels, register_create_panel_view
 from app.bot.views import register_persistent_views
 from app.core.config import Settings
@@ -39,6 +40,7 @@ def create_bot(
         bot._lfg_panels_ensured = True
         try:
             await ensure_lfg_panels(bot, settings, session_factory, event_bus, guild_config)
+            await ensure_all_guild_guides(bot, session_factory)
         except Exception:
             logger.exception("falha ao garantir painéis LFG — usa /lfg-painel manualmente")
 
@@ -141,9 +143,7 @@ async def _reconcile_on_startup(
     for lobby in expired:
         await embed_updater.refresh_now(lobby.id)
 
-    register_persistent_views(
-        bot, session_factory, event_bus, [lobby.id for lobby in active], guild_config
-    )
+    register_persistent_views(bot, session_factory, event_bus, active, guild_config)
     register_create_panel_view(bot, settings, session_factory, event_bus, guild_config)
 
     for lobby in active:

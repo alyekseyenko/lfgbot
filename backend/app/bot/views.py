@@ -23,6 +23,7 @@ from app.services.errors import (
     SearchBlockedError,
 )
 from app.services.guild_config import GuildConfigService
+from app.services.lobby_post_style import is_simple_post_style
 from app.services.search_cooldown import SearchCooldownPolicy, format_search_blocked_until
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,57 @@ class KickMemberView(discord.ui.View):
             for user_id, name in members[:25]
         ]
         self.add_item(KickMemberSelect(lobby_id, session_factory, event_bus, options))
+
+
+class SimpleLobbyView(discord.ui.View):
+    """Pedido simples: só o host pode fechar."""
+
+    def __init__(self, lobby_id: UUID) -> None:
+        super().__init__(timeout=None)
+        self.lobby_id = lobby_id
+        close_btn = discord.ui.Button(
+            label="Fechar",
+            style=discord.ButtonStyle.danger,
+            custom_id=close_custom_id(lobby_id),
+            row=0,
+        )
+        close_btn.callback = self._close_callback
+        self.add_item(close_btn)
+        self._session_factory: async_sessionmaker[AsyncSession] | None = None
+        self._event_bus: EventBus | None = None
+        self._guild_config: GuildConfigService | None = None
+
+    def bind(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        event_bus: EventBus,
+        guild_config: GuildConfigService | None = None,
+    ) -> None:
+        self._session_factory = session_factory
+        self._event_bus = event_bus
+        self._guild_config = guild_config
+
+    async def _close_callback(self, interaction: discord.Interaction) -> None:
+        await self._handle_close(interaction)
+
+    async def _handle_close(self, interaction: discord.Interaction) -> None:
+        helper = LobbyView(self.lobby_id)
+        helper.bind(self._session_factory, self._event_bus, self._guild_config)
+        await helper._handle_close(interaction)
+
+    def refresh_buttons(self, lobby_state: str, _slots_free: int) -> None:
+        active = lobby_state in ("open", "full")
+        for item in self.children:
+            if not isinstance(item, discord.ui.Button):
+                continue
+            if item.custom_id and item.custom_id.startswith("lfg:close:"):
+                item.disabled = not active
+
+
+def make_lobby_view(lobby_id: UUID, post_style: str | None) -> LobbyView | SimpleLobbyView:
+    if is_simple_post_style(post_style):
+        return SimpleLobbyView(lobby_id)
+    return LobbyView(lobby_id)
 
 
 class LobbyView(discord.ui.View):
@@ -393,10 +445,10 @@ def register_persistent_views(
     bot: discord.Client,
     session_factory: async_sessionmaker[AsyncSession],
     event_bus: EventBus,
-    lobby_ids: list[UUID],
+    lobbies: list[Lobby],
     guild_config: GuildConfigService | None = None,
 ) -> None:
-    for lobby_id in lobby_ids:
-        view = LobbyView(lobby_id)
+    for lobby in lobbies:
+        view = make_lobby_view(lobby.id, lobby.post_style)
         view.bind(session_factory, event_bus, guild_config)
         bot.add_view(view)
