@@ -234,7 +234,10 @@ def _build_simple_lobby_embed(
     )
     embed.add_field(
         name=_embed_field_label(embed_style, "field_expires", "Expira", decorative, "⏱"),
-        value=_strike_main_text(f"**{expires_local.strftime('%H:%M')}**", inactive),
+        value=_strike_main_text(
+            f"**{expires_local.strftime('%H:%M')}** Lisboa",
+            inactive,
+        ),
         inline=True,
     )
 
@@ -261,8 +264,11 @@ def _build_simple_lobby_embed(
         if embed_style is not None and embed_style.footer_brand.strip()
         else "LFG Valorant"
     )
-    suffix = embed_custom_text(embed_style, "footer_suffix", DEFAULT_FOOTER_SUFFIX)
-    footer_text = f"{brand} · #{short_id} · {expires_local.strftime('%H:%M')} {suffix}".strip()
+    expires_line = f"Expira {expires_local.strftime('%H:%M')} Lisboa"
+    if inactive:
+        footer_text = f"{brand} · #{short_id} · Pedido encerrado"
+    else:
+        footer_text = f"{brand} · #{short_id} · {expires_line} · Fecha com o botão Fechar"
     embed.set_footer(text=footer_text, icon_url=footer_icon)
 
     unique_ids = list(dict.fromkeys(mention_ids))

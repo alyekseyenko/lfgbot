@@ -25,7 +25,8 @@ def assert_can_host_create(user: User, now: datetime) -> None:
 
     if user.host_create_blocked_until is not None and user.host_create_blocked_until > now:
         raise HostRecreateBlockedError(
-            format_host_recreate_blocked_until(user.host_create_blocked_until)
+            "Acabaste de fechar um pedido — espera um pouco antes de criar outro. "
+            f"{format_host_recreate_blocked_until(user.host_create_blocked_until)}"
         )
 
 

@@ -12,6 +12,7 @@ from app.bot.lfg_panel import (
     rank_extras_prompt,
     rank_from_select_value,
     rank_select_options,
+    rank_select_options_with_default,
     ranks_mode_select_options,
 )
 
@@ -74,6 +75,17 @@ def test_parse_optional_panel_rank() -> None:
     assert parse_optional_panel_rank("  gold ") == "Gold"
     assert parse_optional_panel_rank("plat") == "Platinum"
     assert parse_optional_panel_rank("nope") is None
+
+
+def test_rank_select_options_with_default_marks_selection() -> None:
+    opts = rank_select_options_with_default("Gold")
+    defaults = [o for o in opts if o.default]
+    assert len(defaults) == 1
+    assert defaults[0].value == "Gold"
+    none_opts = rank_select_options_with_default(None)
+    none_default = [o for o in none_opts if o.default]
+    assert len(none_default) == 1
+    assert none_default[0].value == RANK_SELECT_NONE
 
 
 def test_rank_select_options_include_none_and_ranks() -> None:

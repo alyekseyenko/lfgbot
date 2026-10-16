@@ -120,9 +120,10 @@ async def begin_lobby_create(
         create_source=create_source,
     )
     summary = (
-        f"Já tens um lobby **{existing.mode}** aberto ({existing.slots} vagas, "
+        f"Já tens um pedido **ativo** ({existing.mode}, {existing.slots} vagas, "
         f"ranks: {_rank_summary(existing.min_rank, existing.max_rank)}).\n"
-        "Queres **fechar o anterior** e publicar este novo pedido?"
+        "**Fecha o post no canal** (botão **Fechar**) ou espera expirar.\n"
+        "Ou confirma abaixo para **substituir** por este novo pedido."
     )
     if interaction is not None:
         await interaction.followup.send(summary, view=view, ephemeral=True)

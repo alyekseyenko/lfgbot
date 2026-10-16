@@ -45,6 +45,6 @@ async def assert_party_code_available_for_guild(
     result = await session.execute(query.limit(1))
     if result.scalar_one_or_none() is not None:
         raise PartyCodeInUseError(
-            "Já existe um pedido ativo com este código de party neste servidor. "
-            "Espera que o outro feche ou usa outro código."
+            "Já há um pedido **ativo** com este código neste servidor. "
+            "Fecha aquele post (**Fechar**), espera expirar, ou usa **outro código**."
         )

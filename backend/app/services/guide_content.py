@@ -5,17 +5,19 @@ GUIDE_BODY_MAX_LEN = 3900
 
 # Texto por defeito do canal de guia (editável no dashboard → Geral).
 DEFAULT_GUIDE_BODY = """**O essencial**
-Publicas um **pedido de grupo** nos canais LFG. Outros usam **Entrar** e **Sair** no embed. Sair ou ser **removido do pedido** não te expulsa do Discord — só sais desse grupo.
+**Simples:** publica o **código** no canal — entras no jogo e convidas pelo código (só o host usa **Fechar**).
+**Detalhado:** lista no Discord com **Entrar** / **Sair** (como antes).
+Sair ou ser **removido do pedido** não te expulsa do Discord — só sais desse grupo.
 
 ━━━━━━━━━━━━━━━━━━━━
 **Criar pedido — painel (recomendado)**
-1. Clica **Criar grupo** na mensagem fixa do bot.
-2. **Vagas** (1–4) e **código da party**.
-3. Ranks opcionais → **Publicar**.
+1. **Criar grupo** → **Simples** (padrão) ou **Detalhado**.
+2. **Simples:** vagas + código → **Publicar já** (qualquer rank) ou escolhe ranks mín./máx.
+3. **Detalhado:** ranks, agentes, código público/privado, etc.
 O formulário é só para ti; o pedido fica visível no canal.
 
 **Criar pedido — `/procurar`**
-Mesmo objetivo, com mais opções: ranks **informativos** ou **verificados** (o bot pode impedir entrada se o teu rank não cumprir), código **público** ou **privado**, até 2 **roles de agente** procuradas. O modo (Competitivo / Unrated) segue o canal.
+Por defeito é **simples** (`vagas` + `codigo`). Para **Entrar**/**Sair** no Discord, usa `tipo: Detalhado` e as opções extra (ranks verificados, código privado, agentes). O modo (Competitivo / Unrated) segue o canal.
 
 ━━━━━━━━━━━━━━━━━━━━
 **Nos pedidos (botões)**

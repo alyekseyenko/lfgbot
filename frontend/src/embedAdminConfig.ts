@@ -85,8 +85,9 @@ export const EMBED_PEDIDOS_TABS: { id: EmbedPedidosTab; label: string }[] = [
 
 /** Corpo fixo do painel (entre lead e CTA) quando não há descrição custom completa. */
 export const PANEL_EMBED_BODY =
-  "**Criar grupo** → **Simples** (padrão) ou **Detalhado**.\n" +
-  "Simples: código, vagas e rank — só **Fechar**. Detalhado: **Entrar** / **Sair** · ou `/procurar`.";
+  "**Simples:** publica o código no canal (só **Fechar**). " +
+  "**Detalhado:** lista no Discord (**Entrar** / **Sair**).\n" +
+  "**Criar grupo** → escolhe o tipo · ou `/procurar` (simples por defeito).";
 
 /** Valores por omissão (alinhados com o bot). */
 export const LFG_EMBED_TEXT_DEFAULTS: Record<string, string> = {

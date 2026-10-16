@@ -40,9 +40,23 @@ logger = logging.getLogger(__name__)
 PANEL_BUTTON_CUSTOM_ID = "lfg:panel:create"
 PANEL_EMBED_TITLE = "LFG — Criar grupo"
 PANEL_EMBED_DESCRIPTION = (
-    "**Criar grupo** → **Simples** (padrão) ou **Detalhado**.\n"
-    "Simples: código, vagas e rank — só **Fechar**. Detalhado: **Entrar** / **Sair** · ou `/procurar`."
+    "**Simples:** publica o código no canal (só **Fechar**). "
+    "**Detalhado:** lista no Discord (**Entrar** / **Sair**).\n"
+    "**Criar grupo** → escolhe o tipo · ou `/procurar` (simples por defeito)."
 )
+
+# Últimos ranks do pedido simples por host (só memória do processo; melhora repetição no mesmo dia).
+_last_simple_panel_ranks: dict[int, tuple[str | None, str | None]] = {}
+
+
+def remember_simple_panel_ranks(
+    user_id: int, min_rank: str | None, max_rank: str | None
+) -> None:
+    _last_simple_panel_ranks[user_id] = (min_rank, max_rank)
+
+
+def recalled_simple_panel_ranks(user_id: int) -> tuple[str | None, str | None]:
+    return _last_simple_panel_ranks.get(user_id, (None, None))
 
 
 def _append_guide_channel_line(text: str, guide_channel_id: int) -> str:
@@ -118,6 +132,23 @@ def rank_select_options() -> list[discord.SelectOption]:
     return options
 
 
+def rank_select_options_with_default(selected: str | None) -> list[discord.SelectOption]:
+    """Opções com «Sem limite» ou um rank pré-marcado (pedido simples repetido)."""
+    out: list[discord.SelectOption] = []
+    for opt in rank_select_options():
+        is_none = selected is None and opt.value == RANK_SELECT_NONE
+        is_rank = selected is not None and opt.value == selected
+        out.append(
+            discord.SelectOption(
+                label=opt.label,
+                value=opt.value,
+                emoji=opt.emoji,
+                default=is_none or is_rank,
+            )
+        )
+    return out
+
+
 def rank_from_select_value(value: str) -> str | None:
     if value == RANK_SELECT_NONE:
         return None
@@ -184,7 +215,7 @@ async def execute_panel_lobby_create(
         post_style=post_style,
     )
     try:
-        await begin_lobby_create(
+        outcome = await begin_lobby_create(
             panel.bot,
             channel,
             panel.settings,
@@ -196,6 +227,8 @@ async def execute_panel_lobby_create(
             guild_config=panel.guild_config,
             create_source=LOBBY_SOURCE_PANEL,
         )
+        if outcome == "published" and post_style == POST_STYLE_SIMPLE:
+            remember_simple_panel_ranks(interaction.user.id, min_rank, max_rank)
     except Exception:
         logger.exception("panel create failed for user %s", interaction.user.id)
         await interaction.followup.send(
@@ -626,28 +659,43 @@ class SimpleRankPublishView(discord.ui.View):
         self._party_code = party_code
         self._user_id = user_id
         self._check = _PanelExtrasUserCheck(user_id)
-        self._min_rank: str | None = None
-        self._max_rank: str | None = None
+        recalled_min, recalled_max = recalled_simple_panel_ranks(user_id)
+        self._min_rank = recalled_min
+        self._max_rank = recalled_max
+
+        quick_btn = discord.ui.Button(
+            label="Publicar já (qualquer rank)",
+            style=discord.ButtonStyle.primary,
+            row=0,
+        )
+        quick_btn.callback = self._on_publish_quick
+        self.add_item(quick_btn)
 
         self._min_select = discord.ui.Select(
             placeholder="Rank mínimo (opcional)",
-            options=rank_select_options(),
+            options=rank_select_options_with_default(recalled_min),
             min_values=1,
             max_values=1,
+            row=1,
         )
         self._min_select.callback = self._on_min_rank
         self.add_item(self._min_select)
 
         self._max_select = discord.ui.Select(
             placeholder="Rank máximo (opcional)",
-            options=rank_select_options(),
+            options=rank_select_options_with_default(recalled_max),
             min_values=1,
             max_values=1,
+            row=1,
         )
         self._max_select.callback = self._on_max_rank
         self.add_item(self._max_select)
 
-        publish_btn = discord.ui.Button(label="Publicar", style=discord.ButtonStyle.success)
+        publish_btn = discord.ui.Button(
+            label="Publicar com estes ranks",
+            style=discord.ButtonStyle.success,
+            row=1,
+        )
         publish_btn.callback = self._on_publish
         self.add_item(publish_btn)
 
@@ -664,9 +712,23 @@ class SimpleRankPublishView(discord.ui.View):
         self._max_rank = rank_from_select_value(chosen)
         await interaction.response.defer()
 
+    async def _on_publish_quick(self, interaction: discord.Interaction) -> None:
+        await self._finish_publish(interaction, min_rank=None, max_rank=None)
+
     async def _on_publish(self, interaction: discord.Interaction) -> None:
+        await self._finish_publish(
+            interaction, min_rank=self._min_rank, max_rank=self._max_rank
+        )
+
+    async def _finish_publish(
+        self,
+        interaction: discord.Interaction,
+        *,
+        min_rank: str | None,
+        max_rank: str | None,
+    ) -> None:
         try:
-            validate_rank_range(self._min_rank, self._max_rank)
+            validate_rank_range(min_rank, max_rank)
         except RankRangeError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
@@ -679,8 +741,8 @@ class SimpleRankPublishView(discord.ui.View):
             self._panel,
             slots=self._slots,
             party_code=self._party_code,
-            min_rank=self._min_rank,
-            max_rank=self._max_rank,
+            min_rank=min_rank,
+            max_rank=max_rank,
             party_code_public=True,
             ranks_verified=False,
             wanted_agents=[],
@@ -727,7 +789,7 @@ class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
             await interaction.response.send_message("Só no servidor.", ephemeral=True)
             return
         await interaction.response.send_message(
-            "Escolhe **rank mínimo** e **máximo** (opcional) e carrega em **Publicar**.",
+            "**Publicar já** = qualquer rank. Ou ajusta os ranks e **Publicar com estes ranks**.",
             view=SimpleRankPublishView(
                 self._panel,
                 slots=slots,

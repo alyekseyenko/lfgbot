@@ -124,18 +124,18 @@ class LfgCog(commands.Cog):
 
     @app_commands.command(
         name="procurar",
-        description="Criar um pedido de grupo (LFG). O modo segue o canal (ex.: unrated no nome).",
+        description="Publicar pedido simples (código + vagas). Modo do canal segue o nome (ex.: unrated).",
     )
     @app_commands.describe(
-        tipo="Simples (padrão) ou detalhado com Entrar/Sair",
         vagas="Quantas pessoas precisas (1 a 4, padrão 2)",
-        codigo="Código da party (opcional)",
-        ranks_modo="Ranks informativos ou verificados (padrão: informativos)",
+        codigo="Código da party (recomendado no modo simples)",
+        tipo="Opcional: Detalhado = Entrar/Sair e mais opções no Discord",
         rank_minimo="Rank mínimo (opcional)",
         rank_maximo="Rank máximo (opcional)",
-        codigo_visibilidade="Quem vê o código da party no Discord",
-        agente_1="Agente procurado (ex.: Initiator)",
-        agente_2="Outro agente (opcional)",
+        ranks_modo="(só detalhado) Ranks informativos ou verificados",
+        codigo_visibilidade="(só detalhado) Código público ou privado no Discord",
+        agente_1="(só detalhado) Agente procurado",
+        agente_2="(só detalhado) Outro agente",
     )
     @app_commands.choices(
         tipo=POST_STYLE_CHOICES,
@@ -149,9 +149,9 @@ class LfgCog(commands.Cog):
     async def procurar(
         self,
         interaction: discord.Interaction,
-        tipo: app_commands.Choice[str] | None = None,
         vagas: app_commands.Range[int, 1, 4] = 2,
         codigo: str | None = None,
+        tipo: app_commands.Choice[str] | None = None,
         ranks_modo: app_commands.Choice[str] | None = None,
         rank_minimo: app_commands.Choice[str] | None = None,
         rank_maximo: app_commands.Choice[str] | None = None,
