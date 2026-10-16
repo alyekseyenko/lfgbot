@@ -9,7 +9,6 @@ from discord.ext import commands
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import ApiStateDep, BotDep, SessionUserDep
-from app.api.state import ApiState
 from app.api.discord_api import fetch_user_guilds, user_can_manage_guild
 from app.api.guild_cache import get_discord_guilds
 from app.api.schemas import (
@@ -32,6 +31,7 @@ from app.api.snowflake import (
     snowflake_list_to_str,
     snowflake_to_str,
 )
+from app.api.state import ApiState
 from app.services.guide_content import normalize_guide_body
 from app.services.guild_stats import guild_lobby_stats, guild_lobby_stats_lifetime
 from app.services.guild_valorant_agents import (

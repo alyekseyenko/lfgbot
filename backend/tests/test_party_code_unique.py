@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,9 +86,7 @@ async def test_same_code_different_guilds_allowed(
 
 
 @pytest.mark.asyncio
-async def test_no_code_skips_uniqueness(
-    session: AsyncSession, event_bus: EventBus
-) -> None:
+async def test_no_code_skips_uniqueness(session: AsyncSession, event_bus: EventBus) -> None:
     host = User(discord_id=4, name="d")
     session.add(host)
     await session.flush()

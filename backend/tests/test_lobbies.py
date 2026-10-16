@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.events import EventBus
 from app.db.models import LobbyState
-from app.services.errors import LobbyFullError, NotInLobbyError
-from app.services.errors import LobbyNotJoinableError
+from app.services.errors import LobbyFullError, LobbyNotJoinableError, NotInLobbyError
 from app.services.lobbies import (
     close_lobby,
     close_lobby_as_host,
@@ -26,9 +25,7 @@ async def _host(session: AsyncSession, discord_id: int = 1001) -> None:
 
 
 @pytest.mark.asyncio
-async def test_join_twice_is_idempotent(
-    session: AsyncSession, event_bus: EventBus
-) -> None:
+async def test_join_twice_is_idempotent(session: AsyncSession, event_bus: EventBus) -> None:
     await _host(session, 1)
     user = await upsert_user(session, 2, "Player2")
     await session.commit()
@@ -55,9 +52,7 @@ async def test_join_twice_is_idempotent(
 
 
 @pytest.mark.asyncio
-async def test_lobby_full_rejects_extra_player(
-    session: AsyncSession, event_bus: EventBus
-) -> None:
+async def test_lobby_full_rejects_extra_player(session: AsyncSession, event_bus: EventBus) -> None:
     await _host(session, 10)
     await upsert_user(session, 11, "P11")
     await upsert_user(session, 12, "P12")
@@ -143,9 +138,7 @@ async def test_expire_due_lobbies(session: AsyncSession, event_bus: EventBus) ->
 
 
 @pytest.mark.asyncio
-async def test_leave_when_not_member_raises(
-    session: AsyncSession, event_bus: EventBus
-) -> None:
+async def test_leave_when_not_member_raises(session: AsyncSession, event_bus: EventBus) -> None:
     await _host(session, 40)
     await upsert_user(session, 41, "P41")
     await session.commit()
@@ -251,9 +244,7 @@ async def test_close_lobby_as_host(session: AsyncSession, event_bus: EventBus) -
         )
 
     async with session.begin():
-        closed = await close_lobby_as_host(
-            session, event_bus, lobby_id=lobby.id, host_id=70
-        )
+        closed = await close_lobby_as_host(session, event_bus, lobby_id=lobby.id, host_id=70)
     assert closed.state == LobbyState.closed
 
 

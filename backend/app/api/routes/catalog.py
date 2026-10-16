@@ -5,12 +5,12 @@ from fastapi import APIRouter, HTTPException
 from app.api.deps import ApiStateDep, SessionUserDep
 from app.api.routes.guilds import _assert_manage_guild, _primary_manage_guild_id
 from app.api.schemas import (
+    AbilityOut,
     CatalogMetaOut,
     CatalogSyncOut,
     ValorantAgentOut,
     ValorantPlayerCardOut,
     ValorantRankOut,
-    AbilityOut,
 )
 from app.services.valorant_catalog import (
     get_catalog_meta,

@@ -43,7 +43,9 @@ async def test_host_updates_rank_range(session: AsyncSession, event_bus: EventBu
 
 
 @pytest.mark.asyncio
-async def test_cannot_reduce_slots_below_members(session: AsyncSession, event_bus: EventBus) -> None:
+async def test_cannot_reduce_slots_below_members(
+    session: AsyncSession, event_bus: EventBus
+) -> None:
     await upsert_user(session, 1002, "Host", rank="Gold")
     await upsert_user(session, 1003, "P1", rank="Gold")
     await upsert_user(session, 1006, "P2", rank="Gold")
@@ -77,7 +79,9 @@ async def test_cannot_reduce_slots_below_members(session: AsyncSession, event_bu
 
 
 @pytest.mark.asyncio
-async def test_increasing_slots_reopens_full_lobby(session: AsyncSession, event_bus: EventBus) -> None:
+async def test_increasing_slots_reopens_full_lobby(
+    session: AsyncSession, event_bus: EventBus
+) -> None:
     await upsert_user(session, 1004, "Host", rank="Gold")
     await upsert_user(session, 1005, "P1", rank="Gold")
     await session.commit()

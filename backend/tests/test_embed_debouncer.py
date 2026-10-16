@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.bot.embed_updater import EmbedUpdateDebouncer, EmbedUpdater, UPDATE_EVENTS
+from app.bot.embed_updater import UPDATE_EVENTS, EmbedUpdateDebouncer, EmbedUpdater
 from app.core.events import DomainEvent, EventBus, EventType
 
 

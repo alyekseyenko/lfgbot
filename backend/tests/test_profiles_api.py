@@ -16,9 +16,7 @@ from app.services.users import upsert_user
 @pytest.fixture
 def api_client(session_factory: async_sessionmaker[AsyncSession]) -> TestClient:
     settings = Settings(session_secret="test-secret", discord_guild_id=42)
-    app = create_api_app(
-        settings, session_factory, None, GuildConfigService(settings), EventBus()
-    )
+    app = create_api_app(settings, session_factory, None, GuildConfigService(settings), EventBus())
     return TestClient(app)
 
 

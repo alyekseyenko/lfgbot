@@ -12,9 +12,9 @@ from app.api.schemas import (
     RecentCompletionOut,
 )
 from app.api.snowflake import parse_snowflake
+from app.db.models import ValorantPlayerCard
 from app.services.player_profile import build_player_profile
 from app.services.riot_id import RiotIdError, parse_riot_id_field
-from app.db.models import ValorantPlayerCard
 from app.services.users import upsert_user
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
@@ -103,9 +103,7 @@ async def patch_my_profile(
     viewer_id = int(user["id"])
     async with state.session_factory() as session:
         async with session.begin():
-            db_user = await upsert_user(
-                session, viewer_id, str(user.get("username", "Jogador"))
-            )
+            db_user = await upsert_user(session, viewer_id, str(user.get("username", "Jogador")))
             patch = body.model_dump(exclude_unset=True)
             if "riot_id" in patch:
                 raw = (patch["riot_id"] or "").strip()

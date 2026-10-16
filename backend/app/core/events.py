@@ -1,12 +1,12 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     lobby_created = "lobby_created"
     member_joined = "member_joined"
     member_left = "member_left"

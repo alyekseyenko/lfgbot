@@ -159,9 +159,7 @@ async def get_catalog_meta(session: AsyncSession) -> datetime | None:
 
 
 async def list_agents(session: AsyncSession) -> list[ValorantAgent]:
-    result = await session.execute(
-        select(ValorantAgent).order_by(ValorantAgent.display_name.asc())
-    )
+    result = await session.execute(select(ValorantAgent).order_by(ValorantAgent.display_name.asc()))
     return list(result.scalars())
 
 

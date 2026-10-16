@@ -3,12 +3,17 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.domain_event_session import set_domain_event_bus
 from app.core.events import EventBus
-from app.db.base import Base
 from app.db import models  # noqa: F401
+from app.db.base import Base
 
 
 @pytest.fixture

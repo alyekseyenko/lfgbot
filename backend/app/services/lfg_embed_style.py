@@ -77,9 +77,7 @@ DEFAULT_PANEL_CTA = ""
 DEFAULT_LOBBY_CTA_OPEN = "👇 **Usa os botões abaixo** para entrar ou sair."
 DEFAULT_LOBBY_INACTIVE_LEAD = "**Este grupo já não está ativo.**"
 DEFAULT_LOBBY_EMPTY_PLAYERS = "_Ninguém na lista — **Entrar** para te juntares._"
-DEFAULT_LOBBY_PRIVATE_CODE_HINT = (
-    "_Oculto — carrega em **Entrar** para receber o código._"
-)
+DEFAULT_LOBBY_PRIVATE_CODE_HINT = "_Oculto — carrega em **Entrar** para receber o código._"
 DEFAULT_AUTHOR_PREFIX = "Host"
 DEFAULT_FOOTER_SUFFIX = "· Expira à hora indicada (Lisboa)"
 
@@ -312,12 +310,8 @@ def simple_lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmb
             simple.competitive_color, default=DEFAULT_COMPETITIVE_COLOR
         ),
         unrated_color=parse_embed_hex_color(simple.unrated_color, default=DEFAULT_UNRATED_COLOR),
-        full_color=parse_embed_hex_color(
-            config.lfg_embed_full_color, default=DEFAULT_FULL_COLOR
-        ),
-        inactive_color=parse_embed_hex_color(
-            simple.inactive_color, default=DEFAULT_INACTIVE_COLOR
-        ),
+        full_color=parse_embed_hex_color(config.lfg_embed_full_color, default=DEFAULT_FULL_COLOR),
+        inactive_color=parse_embed_hex_color(simple.inactive_color, default=DEFAULT_INACTIVE_COLOR),
         decorative=simple.decorative,
         footer_brand=brand or DEFAULT_FOOTER_BRAND,
         banner_url=None,
@@ -328,7 +322,9 @@ def simple_lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmb
         banner_on_panel=config.lfg_embed_banner_on_panel,
         banner_on_lobby=False,
         panel_thumbnail_url=(config.lfg_panel_thumbnail_url or "").strip() or None,
-        panel_color=parse_embed_hex_color(config.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR),
+        panel_color=parse_embed_hex_color(
+            config.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR
+        ),
         panel_footer_brand=(config.lfg_panel_footer_brand or "").strip()[:64] or None,
         panel_banner_url=(config.lfg_panel_banner_url or "").strip() or None,
         panel_decorative=bool(config.lfg_panel_decorative),
@@ -341,7 +337,9 @@ def simple_lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmb
     )
 
 
-def lobby_embed_style_for_post(config: GuildRuntimeConfig, post_style: str | None) -> LobbyEmbedStyle:
+def lobby_embed_style_for_post(
+    config: GuildRuntimeConfig, post_style: str | None
+) -> LobbyEmbedStyle:
     from app.services.lobby_post_style import is_simple_post_style
 
     if is_simple_post_style(post_style):
@@ -375,7 +373,9 @@ def lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmbedStyle
         banner_on_panel=config.lfg_embed_banner_on_panel,
         banner_on_lobby=config.lfg_embed_banner_on_lobby,
         panel_thumbnail_url=(config.lfg_panel_thumbnail_url or "").strip() or None,
-        panel_color=parse_embed_hex_color(config.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR),
+        panel_color=parse_embed_hex_color(
+            config.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR
+        ),
         panel_footer_brand=(config.lfg_panel_footer_brand or "").strip()[:64] or None,
         panel_banner_url=(config.lfg_panel_banner_url or "").strip() or None,
         panel_decorative=bool(config.lfg_panel_decorative),
@@ -411,7 +411,9 @@ def state_colours_from_style(
             discord_colour_from_hex(DEFAULT_INACTIVE_COLOR),
         )
     return (
-        discord_colour_from_hex(parse_embed_hex_color(style.full_color, default=DEFAULT_FULL_COLOR)),
+        discord_colour_from_hex(
+            parse_embed_hex_color(style.full_color, default=DEFAULT_FULL_COLOR)
+        ),
         discord_colour_from_hex(
             parse_embed_hex_color(style.inactive_color, default=DEFAULT_INACTIVE_COLOR)
         ),

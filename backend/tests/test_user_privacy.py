@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import EventBus
@@ -8,9 +11,6 @@ from app.db.models import LobbyMember, User
 from app.services.lobbies import create_lobby, join_lobby
 from app.services.lobby_source import LOBBY_SOURCE_SLASH
 from app.services.user_privacy import DELETED_USER_DISPLAY_NAME, delete_user_personal_data
-from datetime import timedelta
-
-from sqlalchemy import select
 
 
 @pytest.mark.asyncio

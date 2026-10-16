@@ -178,9 +178,7 @@ def build_dashboard_settings_audit(
         lines.append("• Texto do guia LFG atualizado")
 
     if "stats_legacy_lobbies_created" in keys:
-        lines.append(
-            f"• Histórico (pedidos): **{int(changed['stats_legacy_lobbies_created'])}**"
-        )
+        lines.append(f"• Histórico (pedidos): **{int(changed['stats_legacy_lobbies_created'])}**")
     if "stats_legacy_joins" in keys:
         lines.append(f"• Histórico (entradas): **{int(changed['stats_legacy_joins'])}**")
     if "stats_legacy_users" in keys:

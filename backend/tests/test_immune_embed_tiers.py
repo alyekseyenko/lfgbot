@@ -14,10 +14,7 @@ from app.services.lfg_embed_style import (
 
 
 def test_normalize_immune_embed_tiers_caps_at_five() -> None:
-    raw = [
-        {"label": f"T{i}", "color": "AABBCC", "role_ids": [i]}
-        for i in range(10)
-    ]
+    raw = [{"label": f"T{i}", "color": "AABBCC", "role_ids": [i]} for i in range(10)]
     tiers = normalize_immune_embed_tiers(raw)
     assert len(tiers) == 5
     assert tiers[0].label == "T0"
@@ -92,9 +89,7 @@ def test_resolve_embed_uses_tier_label() -> None:
     member = type("Member", (), {"roles": [role]})()
     style = LobbyEmbedStyle(
         immune_embed_enabled=True,
-        immune_embed_tiers=(
-            ImmuneEmbedTier(label="Apoiante", color="112233", role_ids=(42,)),
-        ),
+        immune_embed_tiers=(ImmuneEmbedTier(label="Apoiante", color="112233", role_ids=(42,)),),
     )
     colour, immune = resolve_lobby_embed_colour(
         lobby,

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.riot_id import RiotIdError, format_riot_id, parse_riot_id_field, validate_riot_id_parts
+from app.services.riot_id import (
+    RiotIdError,
+    format_riot_id,
+    parse_riot_id_field,
+    validate_riot_id_parts,
+)
 
 
 def test_format_riot_id() -> None:

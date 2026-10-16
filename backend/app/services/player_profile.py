@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User, ValorantPlayerCard, ValorantRank
 from app.services.gamification import ProfileStats, profile_stats, recent_completions
-from app.services.riot_id import format_riot_id
 from app.services.ranks import normalize_rank_name
+from app.services.riot_id import format_riot_id
 
 
 @dataclass(frozen=True, slots=True)

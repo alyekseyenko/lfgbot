@@ -13,13 +13,13 @@ from app.core.events import EventBus
 from app.db.models import Lobby, LobbyState, User
 from app.services.errors import LobbyNotJoinableError
 from app.services.lfg_embed_style import ImmuneEmbedTier, LobbyEmbedStyle
+from app.services.lobbies import create_lobby, join_lobby
 from app.services.lobby_post_style import (
     POST_STYLE_INTERACTIVE,
     POST_STYLE_SIMPLE,
     is_simple_post_style,
     normalize_post_style,
 )
-from app.services.lobbies import create_lobby, join_lobby
 
 
 def test_normalize_post_style_defaults_simple() -> None:
@@ -83,9 +83,7 @@ def test_simple_embed_immune_title_and_thumbnail() -> None:
     )
     style = LobbyEmbedStyle(
         immune_embed_enabled=True,
-        immune_embed_tiers=(
-            ImmuneEmbedTier(label="Apoiante VIP", color="FF73FA", role_ids=(10,)),
-        ),
+        immune_embed_tiers=(ImmuneEmbedTier(label="Apoiante VIP", color="FF73FA", role_ids=(10,)),),
     )
     built = build_lobby_embed(lobby, host_member=host_member, embed_style=style)
     assert built.embed.title == "Apoiante VIP"
@@ -118,9 +116,7 @@ def test_simple_embed_footer_host_rank_icon_without_immune() -> None:
         members=[],
     )
     mappings = {("valorant_rank", "Gold"): 102}
-    built = build_lobby_embed(
-        lobby, guild=guild, host_member=host_member, role_mappings=mappings
-    )
+    built = build_lobby_embed(lobby, guild=guild, host_member=host_member, role_mappings=mappings)
     assert built.embed.footer is not None
     assert built.embed.footer.icon_url == "https://cdn.example/gold.png"
     assert DEFAULT_HOST_NO_RANK_FOOTER not in (built.embed.footer.text or "")

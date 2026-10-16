@@ -1,15 +1,13 @@
-from app.services.lfg_embed_style import LobbyEmbedStyle
-
 from collections import Counter
 
 import discord
 
 from app.bot.lfg_panel import (
-    CreateGroupPanelView,
     PANEL_EMBED_DESCRIPTION,
     PANEL_EMBED_TITLE,
     RANK_SELECT_NONE,
     RANKS_MODE_VERIFIED,
+    CreateGroupPanelView,
     SimpleRankPublishView,
     build_panel_embed,
     is_panel_message,
@@ -21,6 +19,7 @@ from app.bot.lfg_panel import (
     rank_select_options_with_default,
     ranks_mode_select_options,
 )
+from app.services.lfg_embed_style import LobbyEmbedStyle
 
 
 def _select_count_per_row(view: discord.ui.View) -> dict[int, int]:

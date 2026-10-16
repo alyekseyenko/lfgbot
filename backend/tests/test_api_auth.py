@@ -14,9 +14,7 @@ async def test_health_and_unauthorized_settings(
 ) -> None:
     settings = Settings(session_secret="test-secret")
     event_bus = EventBus()
-    app = create_api_app(
-        settings, session_factory, None, GuildConfigService(settings), event_bus
-    )
+    app = create_api_app(settings, session_factory, None, GuildConfigService(settings), event_bus)
     client = TestClient(app)
 
     assert client.get("/health/live").json() == {"status": "ok"}

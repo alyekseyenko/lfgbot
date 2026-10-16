@@ -1,9 +1,9 @@
+from app.services.guild_config import GuildRuntimeConfig
 from app.services.lfg_embed_style import (
     normalize_lfg_embed_simple,
     normalize_lfg_embed_simple_custom_texts,
     simple_lobby_embed_style_from_config,
 )
-from app.services.guild_config import GuildRuntimeConfig
 
 
 def test_normalize_simple_custom_texts_filters_keys() -> None:

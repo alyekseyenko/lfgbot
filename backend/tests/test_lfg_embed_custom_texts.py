@@ -1,9 +1,9 @@
 from app.services.lfg_embed_style import (
     LFG_EMBED_TEXT_LIMITS,
+    LobbyEmbedStyle,
     embed_custom_text,
     normalize_lfg_embed_custom_texts,
 )
-from app.services.lfg_embed_style import LobbyEmbedStyle
 
 
 def test_normalize_custom_texts_truncates_and_filters() -> None:

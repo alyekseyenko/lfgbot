@@ -1,5 +1,6 @@
-import pytest
 from datetime import timedelta
+
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import EventBus

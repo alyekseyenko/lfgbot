@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.events import EventBus
@@ -15,11 +15,10 @@ from app.services.gamification import (
     level_from_counts,
     level_progress_line,
     next_level_hint,
-    progress_bar,
     profile_stats,
+    progress_bar,
     recent_completions,
     record_lobby_completions,
-    week_bounds_utc,
     week_start_for_date,
     weekly_top_hosts,
 )
@@ -31,7 +30,6 @@ from app.services.lobbies import (
     kick_member_as_host,
     leave_lobby,
 )
-from app.services.search_cooldown import LEAVE_REASON_KICKED
 from app.services.users import upsert_user
 
 
@@ -216,9 +214,7 @@ async def test_player_too_short_stay_not_awarded(
     async with session.begin():
         from app.db.models import LobbyMember
 
-        result = await session.execute(
-            select(LobbyMember).where(LobbyMember.lobby_id == lobby.id)
-        )
+        result = await session.execute(select(LobbyMember).where(LobbyMember.lobby_id == lobby.id))
         member = result.scalar_one()
         member.joined_at = datetime.now(UTC) - timedelta(seconds=30)
 
@@ -289,9 +285,7 @@ async def test_early_leave_no_player_credit(
     async with session.begin():
         await close_lobby(session, event_bus, lobby_id=lobby.id)
 
-    result = await session.execute(
-        select(LobbyCompletion).where(LobbyCompletion.user_id == 5002)
-    )
+    result = await session.execute(select(LobbyCompletion).where(LobbyCompletion.user_id == 5002))
     assert list(result.scalars()) == []
 
 

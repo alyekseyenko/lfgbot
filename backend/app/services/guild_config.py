@@ -26,10 +26,10 @@ from app.services.lfg_embed_style import (
     DEFAULT_UNRATED_COLOR,
     LFG_EMBED_COLOR_SOURCES,
     ImmuneEmbedTier,
-    immune_embed_tiers_for_config,
-    member_has_immune_role,
     LfgEmbedSimpleSettings,
+    immune_embed_tiers_for_config,
     lfg_embed_simple_to_storage,
+    member_has_immune_role,
     normalize_lfg_embed_custom_texts,
     normalize_lfg_embed_simple,
     normalize_rank_embed_colors,
@@ -246,7 +246,8 @@ def _settings_row_to_config(
         ),
         lfg_embed_decorative=bool(row.lfg_embed_decorative),
         lfg_embed_footer_brand=(
-            (row.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND).strip()[:64] or DEFAULT_FOOTER_BRAND
+            (row.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND).strip()[:64]
+            or DEFAULT_FOOTER_BRAND
         ),
         lfg_embed_banner_url=(row.lfg_embed_banner_url or "").strip() or None,
         lfg_embed_custom_texts=normalize_lfg_embed_custom_texts(row.lfg_embed_custom_texts),
@@ -256,7 +257,9 @@ def _settings_row_to_config(
         lfg_embed_banner_on_panel=bool(row.lfg_embed_banner_on_panel),
         lfg_embed_banner_on_lobby=bool(row.lfg_embed_banner_on_lobby),
         lfg_panel_thumbnail_url=(row.lfg_panel_thumbnail_url or "").strip() or None,
-        lfg_panel_color=parse_embed_hex_color(row.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR),
+        lfg_panel_color=parse_embed_hex_color(
+            row.lfg_panel_color, default=DEFAULT_COMPETITIVE_COLOR
+        ),
         lfg_panel_footer_brand=(row.lfg_panel_footer_brand or "").strip()[:64] or None,
         lfg_panel_banner_url=(row.lfg_panel_banner_url or "").strip() or None,
         lfg_panel_decorative=bool(row.lfg_panel_decorative),
