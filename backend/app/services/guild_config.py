@@ -561,7 +561,8 @@ class GuildConfigService:
             merged = dict(row.lfg_embed_simple or {})
             patch = dict(lfg_embed_simple)
             if "custom_texts" in patch and isinstance(patch["custom_texts"], dict):
-                texts = dict(merged.get("custom_texts") or {})
+                existing = merged.get("custom_texts")
+                texts = dict(existing) if isinstance(existing, dict) else {}
                 texts.update(patch["custom_texts"])
                 patch["custom_texts"] = texts
             merged.update(patch)
@@ -618,16 +619,16 @@ class GuildConfigService:
         if immune_embed_tiers is not None:
             from app.services.lfg_embed_style import normalize_immune_embed_tiers
 
-            normalized = normalize_immune_embed_tiers(immune_embed_tiers)
+            normalized_tiers = normalize_immune_embed_tiers(immune_embed_tiers)
             row.immune_embed_tiers = [
                 {
                     "label": tier.label,
                     "color": tier.color,
                     "role_ids": list(tier.role_ids),
                 }
-                for tier in normalized
+                for tier in normalized_tiers
             ]
-            row.immune_role_ids = list(union_immune_role_ids_from_tiers(normalized))
+            row.immune_role_ids = list(union_immune_role_ids_from_tiers(normalized_tiers))
         if search_penalty_enabled is not None:
             row.search_penalty_enabled = search_penalty_enabled
         if search_penalty_early_minutes is not None:

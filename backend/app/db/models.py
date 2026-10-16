@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -348,7 +349,9 @@ class ValorantAgent(Base):
     role_name: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
     display_icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     full_portrait_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    abilities_json: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    abilities_json: Mapped[list[Any]] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
     synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
