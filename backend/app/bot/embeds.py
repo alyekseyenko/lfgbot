@@ -61,6 +61,19 @@ def _host_footer_accent(
     return _HostFooterAccent(icon_url, None)
 
 
+def _host_display_label(
+    host_member: discord.Member | None,
+    host_user: User,
+) -> str:
+    """Nome visível no embed (menções <@id> no embed não resolvem em servidores grandes)."""
+    if host_member is not None:
+        return f"**{host_member.display_name}**"
+    name = (host_user.name or "").strip()
+    if name:
+        return f"**{name}**"
+    return f"<@{host_user.discord_id}>"
+
+
 def _footer_text_and_icon(
     footer_text: str,
     accent: _HostFooterAccent,
@@ -227,13 +240,13 @@ def _build_simple_lobby_embed(
             _mode_title_prefix(lobby.mode, decorative),
             inactive,
         )
-    host_mention = f"<@{lobby.host.discord_id}>"
-    description = _strike_main_text(host_mention, inactive)
+    host_label = _host_display_label(host_member, lobby.host)
+    description = _strike_main_text(host_label, inactive)
     if inactive:
         inactive_lead = embed_custom_text(
             embed_style, "lobby_inactive_lead", DEFAULT_LOBBY_INACTIVE_LEAD
         )
-        description = f"{inactive_lead}\n{host_mention}"
+        description = f"{inactive_lead}\n{host_label}"
     else:
         hint = embed_custom_text(
             embed_style, "lobby_simple_hint", DEFAULT_LOBBY_SIMPLE_HINT
@@ -249,8 +262,11 @@ def _build_simple_lobby_embed(
     )
     if embed_style is not None and embed_style.show_author:
         prefix = embed_custom_text(embed_style, "author_prefix", DEFAULT_AUTHOR_PREFIX)
+        author_name = (
+            host_member.display_name if host_member is not None else lobby.host.name
+        )
         embed.set_author(
-            name=_strike_main_text(f"{prefix} · {lobby.host.name}", inactive),
+            name=_strike_main_text(f"{prefix} · {author_name}", inactive),
             icon_url=host_member.display_avatar.url if host_member is not None else None,
         )
     embed.description = description
@@ -330,7 +346,7 @@ def _build_simple_lobby_embed(
     return LobbyEmbedBuild(
         embed=embed,
         mention_role_ids=unique_role_ids,
-        mention_user_ids=[lobby.host.discord_id],
+        mention_user_ids=[],
     )
 
 
@@ -374,7 +390,7 @@ def build_lobby_embed(
     status = _status_label(lobby.state, decorative)
     inactive = _lobby_is_inactive(lobby)
 
-    host_mention = f"<@{lobby.host.discord_id}>"
+    host_label = _host_display_label(host_member, lobby.host)
     host_tags = member_tags_line(
         guild,
         host_member,
@@ -382,9 +398,9 @@ def build_lobby_embed(
         mention_ids,
         role_mappings=role_mappings,
     )
-    host_line = host_mention
+    host_line = host_label
     if host_tags:
-        host_line = f"{host_mention} — {host_tags}"
+        host_line = f"{host_label} — {host_tags}"
     host_line = _strike_main_text(host_line, inactive)
 
     expires_local = lobby.expires_at.astimezone(PORTUGAL)
@@ -423,7 +439,7 @@ def build_lobby_embed(
     show_author = embed_style is None or embed_style.show_author
     if show_author:
         prefix = embed_custom_text(embed_style, "author_prefix", DEFAULT_AUTHOR_PREFIX)
-        author_name = f"{prefix} · {lobby.host.name}"
+        author_name = f"{prefix} · {host_member.display_name if host_member is not None else lobby.host.name}"
         author_icon = host_member.display_avatar.url if host_member is not None else None
         embed.set_author(
             name=_strike_main_text(author_name, inactive),
@@ -631,7 +647,7 @@ def build_lobby_embed(
     return LobbyEmbedBuild(
         embed=embed,
         mention_role_ids=unique_role_ids,
-        mention_user_ids=[lobby.host.discord_id],
+        mention_user_ids=[],
     )
 
 

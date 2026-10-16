@@ -47,10 +47,8 @@ def test_simple_embed_omits_players_field() -> None:
         members=[],
     )
     built = build_lobby_embed(lobby)
-    assert built.mention_user_ids == [1]
-    mentions = allowed_mentions_for_lobby(built)
-    assert len(mentions.users) == 1
-    assert mentions.users[0].id == 1
+    assert built.mention_user_ids == []
+    assert "**Host**" in (built.embed.description or "")
     names = [f.name for f in built.embed.fields]
     assert "Jogadores" not in " ".join(names)
     assert any("Código" in (n or "") for n in names)

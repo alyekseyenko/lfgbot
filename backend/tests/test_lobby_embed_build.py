@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 from app.bot.embeds import build_lobby_embed
@@ -29,6 +30,19 @@ def test_build_lobby_embed_rank_colour() -> None:
     style = LobbyEmbedStyle(color_source="min_rank")
     built = build_lobby_embed(lobby, embed_style=style)
     assert built.embed.colour.value == int("ECA82E", 16)
+
+
+def test_detailed_embed_shows_host_display_name_not_raw_mention() -> None:
+    lobby = _lobby()
+    host_member = SimpleNamespace(
+        display_name="gabri3ll_079",
+        display_avatar=SimpleNamespace(url=None),
+        roles=[],
+    )
+    built = build_lobby_embed(lobby, host_member=host_member)
+    desc = built.embed.description or ""
+    assert "**gabri3ll_079**" in desc
+    assert "<@1>" not in desc
 
 
 def test_build_lobby_embed_immune_title() -> None:
