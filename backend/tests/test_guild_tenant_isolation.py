@@ -92,11 +92,10 @@ async def test_active_lobbies_scoped_by_guild_in_stats_not_cross_counted(
     session: AsyncSession,
     event_bus: EventBus,
 ) -> None:
-    host = User(discord_id=9, name="host")
-    session.add(host)
-    await session.flush()
-
     async with session.begin():
+        host = User(discord_id=9, name="host")
+        session.add(host)
+        await session.flush()
         await create_lobby(
             session,
             event_bus,
