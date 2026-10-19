@@ -1,4 +1,5 @@
 """Reproject active lobby state from the database onto Discord embeds."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable

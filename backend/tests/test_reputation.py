@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.reputation_roles import reputation_role_targets
 from app.core.events import EventBus
 from app.db.models import Guild, LobbyReputationPost
 from app.services.lobbies import create_lobby, join_lobby
@@ -18,7 +19,6 @@ from app.services.reputation import (
     reputation_leaderboard,
     user_reputation_score,
 )
-from app.bot.reputation_roles import reputation_role_targets
 from app.services.users import upsert_user
 
 
@@ -101,9 +101,7 @@ async def test_vote_cap_four(session: AsyncSession, event_bus: EventBus) -> None
 
     for voter in range(1, 6):
         async with session.begin():
-            result = await apply_vote(
-                session, lobby_id=lobby_id, voter_id=1000 + voter, value=1
-            )
+            result = await apply_vote(session, lobby_id=lobby_id, voter_id=1000 + voter, value=1)
         if voter <= 4:
             assert result.accepted
         else:
@@ -219,8 +217,6 @@ async def test_staff_adjustment_updates_score(session: AsyncSession) -> None:
         assert total2 == 7
 
     async with session.begin():
-        assert (
-            await user_reputation_score(session, discord_guild_id=94, user_id=20) == 7
-        )
+        assert await user_reputation_score(session, discord_guild_id=94, user_id=20) == 7
         board = await reputation_leaderboard(session, discord_guild_id=94, limit=5)
     assert board == [ReputationLeaderboardEntry(user_id=20, score=7)]

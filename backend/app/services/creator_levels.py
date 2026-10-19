@@ -154,8 +154,8 @@ def normalize_level_payload(raw: list[dict[str, object]]) -> list[CreatorLevelDe
     out: list[CreatorLevelDef] = []
     for index, item in enumerate(raw, start=1):
         try:
-            number = int(item.get("level_number") or index)
-            min_rooms = int(item.get("min_rooms") or 0)
+            number = int(str(item.get("level_number") or index))
+            min_rooms = int(str(item.get("min_rooms") or 0))
         except (TypeError, ValueError) as exc:
             raise ValueError("level_number e min_rooms têm de ser números.") from exc
         name = str(item.get("name") or "").strip()[:64]
@@ -172,7 +172,7 @@ def normalize_level_payload(raw: list[dict[str, object]]) -> list[CreatorLevelDe
         role_id: int | None = None
         if role_raw not in (None, "", 0, "0"):
             try:
-                role_id = int(role_raw)  # type: ignore[arg-type]
+                role_id = int(str(role_raw))
             except (TypeError, ValueError) as exc:
                 raise ValueError("discord_role_id inválido.") from exc
             if role_id <= 0:
@@ -229,9 +229,7 @@ async def replace_creator_levels(
     levels: list[CreatorLevelDef],
 ) -> list[CreatorLevelDef]:
     await session.execute(
-        delete(GuildCreatorLevel).where(
-            GuildCreatorLevel.discord_guild_id == discord_guild_id
-        )
+        delete(GuildCreatorLevel).where(GuildCreatorLevel.discord_guild_id == discord_guild_id)
     )
     for item in levels:
         session.add(
@@ -279,10 +277,7 @@ async def weekly_top_creators_in_anchor_week(
         .order_by(func.count().desc(), Lobby.host_id.asc())
         .limit(limit)
     )
-    return [
-        CreatorLeaderboardEntry(user_id=int(row[0]), count=int(row[1]))
-        for row in result.all()
-    ]
+    return [CreatorLeaderboardEntry(user_id=int(row[0]), count=int(row[1])) for row in result.all()]
 
 
 async def all_time_top_creators(
@@ -300,7 +295,4 @@ async def all_time_top_creators(
         .offset(max(0, offset))
         .limit(limit)
     )
-    return [
-        CreatorLeaderboardEntry(user_id=int(row[0]), count=int(row[1]))
-        for row in result.all()
-    ]
+    return [CreatorLeaderboardEntry(user_id=int(row[0]), count=int(row[1])) for row in result.all()]

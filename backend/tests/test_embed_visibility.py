@@ -19,9 +19,7 @@ from app.services.lobby_post_style import (
 
 def test_resolve_post_style_for_guild_clamps_modes() -> None:
     assert (
-        resolve_post_style_for_guild(
-            POST_STYLE_SIMPLE, simple_enabled=False, detailed_enabled=True
-        )
+        resolve_post_style_for_guild(POST_STYLE_SIMPLE, simple_enabled=False, detailed_enabled=True)
         == POST_STYLE_INTERACTIVE
     )
     assert (
@@ -149,9 +147,7 @@ def test_simple_embed_minimal_visibility() -> None:
 def test_simple_lobby_view_omits_close_button() -> None:
     from app.bot.views import SimpleLobbyView, make_lobby_view
 
-    hidden = SimpleLobbyView(
-        uuid4(), show_close_button=False, show_edit_button=False
-    )
+    hidden = SimpleLobbyView(uuid4(), show_close_button=False, show_edit_button=False)
     assert hidden.children == []
     shown = make_lobby_view(uuid4(), "simple", show_close_button=True)
     assert any(getattr(item, "label", None) == "Fechar" for item in shown.children)

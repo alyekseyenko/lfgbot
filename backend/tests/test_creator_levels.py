@@ -41,9 +41,10 @@ def test_resolve_creator_progress_thresholds() -> None:
 
 def test_all_time_ranking_embed_empty() -> None:
     embed = build_all_time_creators_embed([], {})
-    assert "histórico" in (embed.description or "").lower() or "completo" in (
-        embed.description or ""
-    ).lower()
+    assert (
+        "histórico" in (embed.description or "").lower()
+        or "completo" in (embed.description or "").lower()
+    )
     field = embed.fields[0]
     assert "ninguém" in (field.value or "").lower()
 
@@ -63,9 +64,7 @@ def test_all_time_ranking_embed_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_count_and_leaderboard_by_guild(
-    session: AsyncSession, event_bus: EventBus
-) -> None:
+async def test_count_and_leaderboard_by_guild(session: AsyncSession, event_bus: EventBus) -> None:
     session.add(Guild(discord_guild_id=77, name="Test"))
     await upsert_user(session, 11, "HostA")
     await upsert_user(session, 12, "HostB")
@@ -150,9 +149,7 @@ async def test_default_levels_seed_and_replace(session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_profile_stats_uses_rooms_created(
-    session: AsyncSession, event_bus: EventBus
-) -> None:
+async def test_profile_stats_uses_rooms_created(session: AsyncSession, event_bus: EventBus) -> None:
     session.add(Guild(discord_guild_id=66, name="P"))
     await upsert_user(session, 21, "Host")
     await session.commit()

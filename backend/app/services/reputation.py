@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
 import discord
 from sqlalchemy import delete, exists, func, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -105,9 +107,7 @@ async def list_due_lobbies_for_reputation(
     )
     if enabled_after is not None:
         stmt = stmt.where(Lobby.created_at >= enabled_after)
-    result = await session.execute(
-        stmt.order_by(Lobby.created_at.asc()).limit(limit)
-    )
+    result = await session.execute(stmt.order_by(Lobby.created_at.asc()).limit(limit))
     return list(result.scalars())
 
 
@@ -169,9 +169,7 @@ async def apply_vote(
         count = await count_voters(session, lobby_id)
         if count >= MAX_VOTERS_PER_LOBBY:
             return VoteApplyResult(accepted=False, reason="cap_reached")
-        session.add(
-            LobbyReputationVote(lobby_id=lobby_id, voter_id=voter_id, value=value)
-        )
+        session.add(LobbyReputationVote(lobby_id=lobby_id, voter_id=voter_id, value=value))
     else:
         existing.value = value
     await session.flush()
@@ -186,20 +184,17 @@ async def clear_vote(session: AsyncSession, *, lobby_id: UUID, voter_id: int) ->
         )
     )
     await session.flush()
-    return bool(result.rowcount)
+    cursor = cast(CursorResult[Any], result)
+    return bool(cursor.rowcount)
 
 
-async def _vote_reputation_scores(
-    session: AsyncSession, discord_guild_id: int
-) -> dict[int, int]:
+async def _vote_reputation_scores(session: AsyncSession, discord_guild_id: int) -> dict[int, int]:
     """Net score from votes: each vote on a lobby adds vote.value to every participant."""
     lobbies = select(Lobby.id).where(Lobby.discord_guild_id == discord_guild_id).scalar_subquery()
-    votes = (
-        select(
-            LobbyReputationVote.lobby_id,
-            LobbyReputationVote.value,
-        ).where(LobbyReputationVote.lobby_id.in_(lobbies))
-    )
+    votes = select(
+        LobbyReputationVote.lobby_id,
+        LobbyReputationVote.value,
+    ).where(LobbyReputationVote.lobby_id.in_(lobbies))
     vote_rows = await session.execute(votes)
     vote_list = list(vote_rows.all())
     if not vote_list:
@@ -221,18 +216,20 @@ async def _adjustment_reputation_scores(
     session: AsyncSession, discord_guild_id: int
 ) -> dict[int, int]:
     result = await session.execute(
-        select(GuildReputationAdjustment.user_id, func.coalesce(func.sum(GuildReputationAdjustment.delta), 0))
+        select(
+            GuildReputationAdjustment.user_id,
+            func.coalesce(func.sum(GuildReputationAdjustment.delta), 0),
+        )
         .where(GuildReputationAdjustment.discord_guild_id == discord_guild_id)
         .group_by(GuildReputationAdjustment.user_id)
     )
     return {int(user_id): int(total) for user_id, total in result.all()}
 
 
-async def reputation_scores(
-    session: AsyncSession, *, discord_guild_id: int
-) -> dict[int, int]:
+async def reputation_scores(session: AsyncSession, *, discord_guild_id: int) -> dict[int, int]:
     scores = await _vote_reputation_scores(session, discord_guild_id)
-    for user_id, delta in (await _adjustment_reputation_scores(session, discord_guild_id)).items():
+    adjustments = await _adjustment_reputation_scores(session, discord_guild_id)
+    for user_id, delta in adjustments.items():
         scores[user_id] = scores.get(user_id, 0) + delta
     return scores
 
@@ -268,9 +265,7 @@ async def add_reputation_adjustment(
         )
     )
     await session.flush()
-    return await user_reputation_score(
-        session, discord_guild_id=discord_guild_id, user_id=user_id
-    )
+    return await user_reputation_score(session, discord_guild_id=discord_guild_id, user_id=user_id)
 
 
 async def reputation_leaderboard(
@@ -298,7 +293,8 @@ async def delete_adjustments_for_user(session: AsyncSession, user_id: int) -> in
         delete(GuildReputationAdjustment).where(GuildReputationAdjustment.user_id == user_id)
     )
     await session.flush()
-    return int(result.rowcount or 0)
+    cursor = cast(CursorResult[Any], result)
+    return int(cursor.rowcount or 0)
 
 
 async def delete_votes_by_voter(session: AsyncSession, voter_id: int) -> int:
@@ -306,4 +302,5 @@ async def delete_votes_by_voter(session: AsyncSession, voter_id: int) -> int:
         delete(LobbyReputationVote).where(LobbyReputationVote.voter_id == voter_id)
     )
     await session.flush()
-    return int(result.rowcount or 0)
+    cursor = cast(CursorResult[Any], result)
+    return int(cursor.rowcount or 0)

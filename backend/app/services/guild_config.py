@@ -11,10 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings, get_settings
 from app.db.models import Guild, GuildRoleMapping, GuildSettings
-from app.services.party_code import (
-    DEFAULT_PARTY_CODE_MAX_LENGTH,
-    clamp_party_code_max_length,
-)
 from app.services.host_recreate_cooldown import (
     DEFAULT_HOST_RECREATE_COOLDOWN_SECONDS,
     DEFAULT_IMMUNE_HOST_RECREATE_COOLDOWN_SECONDS,
@@ -45,6 +41,10 @@ from app.services.lfg_embed_style import (
     normalize_rank_embed_colors,
     parse_embed_hex_color,
     union_immune_role_ids_from_tiers,
+)
+from app.services.party_code import (
+    DEFAULT_PARTY_CODE_MAX_LENGTH,
+    clamp_party_code_max_length,
 )
 from app.services.search_cooldown import (
     DEFAULT_EARLY_MAX_COUNT,
@@ -263,15 +263,9 @@ def _settings_row_to_config(
         reputation_negative_threshold=int(
             getattr(row, "reputation_negative_threshold", -15) or -15
         ),
-        reputation_negative_role_id=int(
-            getattr(row, "reputation_negative_role_id", 0) or 0
-        ),
-        reputation_positive_threshold=int(
-            getattr(row, "reputation_positive_threshold", 25) or 25
-        ),
-        reputation_positive_role_id=int(
-            getattr(row, "reputation_positive_role_id", 0) or 0
-        ),
+        reputation_negative_role_id=int(getattr(row, "reputation_negative_role_id", 0) or 0),
+        reputation_positive_threshold=int(getattr(row, "reputation_positive_threshold", 25) or 25),
+        reputation_positive_role_id=int(getattr(row, "reputation_positive_role_id", 0) or 0),
         auto_format_messages=row.auto_format_messages,
         default_lfg_mode=row.default_lfg_mode,
         gamification_enabled=row.gamification_enabled,
@@ -589,9 +583,7 @@ class GuildConfigService:
         if reputation_delay_minutes is not None:
             from app.services.reputation import clamp_reputation_delay_minutes
 
-            row.reputation_delay_minutes = clamp_reputation_delay_minutes(
-                reputation_delay_minutes
-            )
+            row.reputation_delay_minutes = clamp_reputation_delay_minutes(reputation_delay_minutes)
         if reputation_negative_threshold is not None:
             from app.services.reputation import clamp_reputation_negative_threshold
 

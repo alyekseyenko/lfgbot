@@ -562,7 +562,7 @@ def lobby_embed_style_for_post(
     return lobby_embed_style_from_config(config)
 
 
-def lobby_embed_style_from_config(config: "GuildRuntimeConfig") -> LobbyEmbedStyle:
+def lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmbedStyle:
     banner = (config.lfg_embed_banner_url or "").strip() or None
     brand = (config.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND).strip()[:64]
     return LobbyEmbedStyle(

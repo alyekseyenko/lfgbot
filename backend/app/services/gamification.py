@@ -253,9 +253,9 @@ async def profile_stats(
     kicks = int(kicks_result.scalar_one())
 
     from app.services.creator_levels import (
+        count_rooms_created,
         default_creator_levels,
         ensure_default_creator_levels,
-        count_rooms_created,
         resolve_creator_progress,
     )
 

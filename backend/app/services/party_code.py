@@ -63,9 +63,7 @@ async def assert_party_code_available_for_guild(
     exclude_lobby_id: UUID | None = None,
     party_code_max_length: int = DEFAULT_PARTY_CODE_MAX_LENGTH,
 ) -> None:
-    normalized = normalize_party_code(
-        party_code, max_length=party_code_max_length
-    )
+    normalized = normalize_party_code(party_code, max_length=party_code_max_length)
     if normalized is None:
         return
 

@@ -12,6 +12,8 @@ from app.api.deps import ApiStateDep, BotDep, SessionUserDep
 from app.api.discord_api import fetch_user_guilds, user_can_manage_guild
 from app.api.guild_cache import get_discord_guilds
 from app.api.schemas import (
+    CreatorLevelItem,
+    CreatorLevelsPut,
     DiscordChannelOut,
     DiscordRoleOut,
     GuildOut,
@@ -22,8 +24,6 @@ from app.api.schemas import (
     InviteUrlOut,
     RoleMappingItem,
     RoleMappingsPut,
-    CreatorLevelItem,
-    CreatorLevelsPut,
     ValorantAgentRoleItem,
     ValorantAgentRolesPut,
 )
@@ -34,14 +34,14 @@ from app.api.snowflake import (
     snowflake_to_str,
 )
 from app.api.state import ApiState
-from app.services.guide_content import normalize_guide_body
-from app.services.guild_stats import guild_lobby_stats, guild_lobby_stats_lifetime
 from app.services.creator_levels import (
     CreatorLevelDef,
     ensure_default_creator_levels,
     normalize_level_payload,
     replace_creator_levels,
 )
+from app.services.guide_content import normalize_guide_body
+from app.services.guild_stats import guild_lobby_stats, guild_lobby_stats_lifetime
 from app.services.guild_valorant_agents import (
     list_guild_agent_role_mappings,
     replace_guild_agent_role_mappings,
@@ -141,13 +141,9 @@ def _settings_to_out(row) -> GuildSettingsOut:
         reputation_channel_id=snowflake_to_str(int(row.reputation_channel_id or 0)),
         reputation_delay_minutes=int(row.reputation_delay_minutes or 50),
         reputation_negative_threshold=int(row.reputation_negative_threshold or -15),
-        reputation_negative_role_id=snowflake_to_str(
-            int(row.reputation_negative_role_id or 0)
-        ),
+        reputation_negative_role_id=snowflake_to_str(int(row.reputation_negative_role_id or 0)),
         reputation_positive_threshold=int(row.reputation_positive_threshold or 25),
-        reputation_positive_role_id=snowflake_to_str(
-            int(row.reputation_positive_role_id or 0)
-        ),
+        reputation_positive_role_id=snowflake_to_str(int(row.reputation_positive_role_id or 0)),
         auto_format_messages=row.auto_format_messages,
         default_lfg_mode=row.default_lfg_mode,
         gamification_enabled=row.gamification_enabled,
@@ -194,9 +190,7 @@ def _settings_to_out(row) -> GuildSettingsOut:
         lfg_embed_detailed=lfg_embed_detailed_to_storage(
             normalize_lfg_embed_detailed(row.lfg_embed_detailed)
         ),
-        lfg_embed_panel=lfg_embed_panel_to_storage(
-            normalize_lfg_embed_panel(row.lfg_embed_panel)
-        ),
+        lfg_embed_panel=lfg_embed_panel_to_storage(normalize_lfg_embed_panel(row.lfg_embed_panel)),
         lfg_post_style_simple_enabled=bool(row.lfg_post_style_simple_enabled),
         lfg_post_style_detailed_enabled=bool(row.lfg_post_style_detailed_enabled),
         immune_embed_enabled=bool(row.immune_embed_enabled),

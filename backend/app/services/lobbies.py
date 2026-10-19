@@ -131,9 +131,7 @@ async def create_lobby(
     assert_can_search(host_row, now)
     assert_can_host_create(host_row, now)
 
-    normalized_code = normalize_party_code(
-        party_code, max_length=party_code_max_length
-    )
+    normalized_code = normalize_party_code(party_code, max_length=party_code_max_length)
     if discord_guild_id is not None:
         await assert_party_code_available_for_guild(
             session,
@@ -559,10 +557,7 @@ async def get_host_active_lobby(
     if not include_past_ttl:
         filters.append(Lobby.expires_at > now)
     result = await session.execute(
-        select(Lobby)
-        .where(*filters)
-        .order_by(Lobby.created_at.desc())
-        .limit(1)
+        select(Lobby).where(*filters).order_by(Lobby.created_at.desc()).limit(1)
     )
     return result.scalar_one_or_none()
 

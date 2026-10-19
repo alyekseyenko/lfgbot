@@ -182,9 +182,7 @@ def build_dashboard_settings_audit(
         lines.append(f"• Reputação: {_channel_ref(changed.get('reputation_channel_id'))}")
 
     if "reputation_delay_minutes" in keys:
-        lines.append(
-            f"• Atraso reputação: **{int(changed['reputation_delay_minutes'])}** min"
-        )
+        lines.append(f"• Atraso reputação: **{int(changed['reputation_delay_minutes'])}** min")
 
     if "reputation_negative_threshold" in keys:
         lines.append(
@@ -192,18 +190,14 @@ def build_dashboard_settings_audit(
         )
     if "reputation_negative_role_id" in keys:
         rid = int(changed.get("reputation_negative_role_id") or 0)
-        lines.append(
-            f"• Role reputação negativa: {'Desligado' if rid <= 0 else f'<@&{rid}>'}"
-        )
+        lines.append(f"• Role reputação negativa: {'Desligado' if rid <= 0 else f'<@&{rid}>'}")
     if "reputation_positive_threshold" in keys:
         lines.append(
             f"• Reputação positiva: ≥ **{int(changed['reputation_positive_threshold'])}** pts"
         )
     if "reputation_positive_role_id" in keys:
         rid = int(changed.get("reputation_positive_role_id") or 0)
-        lines.append(
-            f"• Role reputação positiva: {'Desligado' if rid <= 0 else f'<@&{rid}>'}"
-        )
+        lines.append(f"• Role reputação positiva: {'Desligado' if rid <= 0 else f'<@&{rid}>'}")
 
     if "weekly_leaderboard_anchor" in keys:
         anchor = changed.get("weekly_leaderboard_anchor")
