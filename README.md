@@ -27,6 +27,24 @@ The volume increase is not “more noise” — it is **more successful structur
 
 **CV / LinkedIn (one line):** Led digital transformation of LFG for a ~13k Valorant Discord: replaced chaotic manual channels (~450 searches/day) with a structured bot + admin platform (~1,250/day), cutting moderator toil, improving traceability and match quality via gamification, creator rewards, and reputation governance.
 
+### Multi-server ready (not locked to one community)
+
+The codebase is **multi-tenant by design**: each Discord server is isolated by `discord_guild_id`, with its own channels, embed styles, role mappings, reputation rules, and creator levels in the **web admin** — no redeploy when you onboard another guild. **Today** the production instance is dedicated to our Portuguese Valorant community (~13k members), but you can **self-host** or fork this repo and invite the same bot to **multiple servers** (one bot token, many guilds), as long as you respect Discord’s one-active-session rule per token.
+
+This is a deliberate product choice: **one platform, many communities**, instead of a hard-coded single-guild script.
+
+### Valorant data stays fresh (agents, ranks, cards)
+
+A background job periodically syncs the **Valorant content catalog** (agents, ranks, player cards) from the public [Valorant API](https://valorant-api.com/) into PostgreSQL. Guild admins map Discord roles to ranks/agents in the dashboard, so embeds and `/procurar` choices stay aligned with **current game content** on every server you configure — without manually updating bot code when Riot adds an agent.
+
+*(This is not the Riot Games developer API for live matchmaking; it is catalog + community LFG workflows. Player profiles can store Riot ID / card cosmetics where enabled.)*
+
+### Culture & quality (why members stayed)
+
+Compared with **manual LFG** (common in large Valorant Discords, including communities in the **15–17k member** range), our rollout focused on **structure over volume**: clearer communication, less duplicate noise, and **accountability** — reputation votes after groups, optional **roles** for very low/high scores, staff **`/reputacao-ajustar`**, and gamification that rewards hosts who keep parties moving. Moderators spend less time firefighting chat; members who repeatedly disrespect the flow are **visible in data** and can be corrected (roles, staff action) instead of endless public arguments.
+
+We do **not** auto-ban from Discord for toxicity; governance is **transparent, guild-configured, and staff-overseen** — which fits large PT communities and RGPD-minded ops.
+
 | | |
 |--|--|
 | **In-game / bot UI (players)** | European Portuguese |
