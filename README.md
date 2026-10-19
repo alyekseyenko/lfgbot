@@ -6,6 +6,27 @@ Open-source **looking-for-group (LFG)** platform for a Portuguese Valorant Disco
 
 **Repository:** https://github.com/alyekseyenko/lfgbot
 
+## Transformation story (why we built it)
+
+For years the community ran **separate LFG channels** — competitive, unrated, scrims, and more — as **unstructured chat**. Moderators had to **watch constantly**: duplicate and **outdated party codes**, no reliable record of **who joined or left**, and repeated complaints about **toxic behaviour** in a flow nobody could audit. It cost staff time every day and created friction for honest players.
+
+As **community owner**, I led a **digital transformation** in parallel with day-to-day operations: introduce a **step-by-step, intuitive** flow (panel + slash commands) so members **stop typing codes into the void** and instead create **typed lobbies** — looking for teammates, filling a squad, scrims, and other modes — with clear **open / full / closed / expired** states.
+
+**Outcomes we can measure:**
+
+| | Before (manual chat) | After (LFG platform) |
+|--|----------------------|----------------------|
+| **Daily group searches** | ~**450** / day (historical average) | ~**1,250** / day (latest internal count) |
+| **Moderation load** | High — reactive, channel-by-channel | Lower — structured posts, audit log, automated expiry |
+| **Traceability** | None | Per-lobby history, reputation votes, creator stats |
+| **Member experience** | Chaos, stale codes, arguments | One consistent embed + buttons; optional gamification |
+
+The volume increase is not “more noise” — it is **more successful structured demand** in the same channels, with **fewer problematic messages** and **higher-quality matches**, supported by **creator levels and rewards**, **weekly rankings**, and a **reputation system** (including staff-adjustable scores and optional **roles** for very low or very high reputation) so behaviour has consequences without mods policing every line of chat.
+
+*Built and operated as product owner + technical lead: requirements from a 13k-member community, incremental rollout, VPS production deploy, and open-sourcing for reuse.*
+
+**CV / LinkedIn (one line):** Led digital transformation of LFG for a ~13k Valorant Discord: replaced chaotic manual channels (~450 searches/day) with a structured bot + admin platform (~1,250/day), cutting moderator toil, improving traceability and match quality via gamification, creator rewards, and reputation governance.
+
 | | |
 |--|--|
 | **In-game / bot UI (players)** | European Portuguese |

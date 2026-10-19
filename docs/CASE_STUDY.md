@@ -2,7 +2,7 @@
 
 ## Problema
 
-Comunidade Discord de Valorant (~13 mil membros) com procura de grupo (LFG) dispersa em chat: grupos duplicados, códigos de party perdidos, moderação reativa e zero métricas sobre quantos grupos fecham de facto.
+Comunidade Discord de Valorant (~13 mil membros) com canais de procura (competitivo, unrated, scrims, etc.) **desorganizados em chat**: moderadores sempre de olho, códigos repetidos ou desatualizados, sem controlo de entradas/saídas, queixas de toxicidade e ~**450** procuras/dia em média. Após a plataforma LFG, o último cálculo interno apontou ~**1,250** procuras/dia **estruturadas**, com menos carga reactiva na moderação.
 
 ## Restrições
 
