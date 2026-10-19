@@ -14,6 +14,7 @@ from app.services.gamification import (
     ROLE_AGENTE,
     ROLE_RADIANTE,
     ROLE_RECRUTA,
+    level_from_counts,
     profile_stats,
     role_name_for_level,
 )
@@ -52,8 +53,9 @@ async def sync_member_lfg_roles(
     member: discord.Member,
 ) -> None:
     async with session_factory() as session:
-        stats = await profile_stats(session, member.id)
-    await apply_lfg_roles(member, stats.level)
+        stats = await profile_stats(session, member.id, discord_guild_id=member.guild.id)
+    completion_level = level_from_counts(stats.host_completions, stats.total_completions)
+    await apply_lfg_roles(member, completion_level)
 
 
 async def sync_awarded_users_for_lobby(

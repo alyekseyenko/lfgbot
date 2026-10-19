@@ -38,7 +38,7 @@ async def test_join_twice_is_idempotent(session: AsyncSession, event_bus: EventB
             host=host,
             mode="Unrated",
             slots=2,
-            party_code="ABC",
+            party_code="ABC001",
             min_rank=None,
             expires_in=timedelta(minutes=30),
         )
@@ -271,6 +271,10 @@ async def test_host_no_active_lobby_after_expires_at(
     async with session.begin():
         active = await get_host_active_lobby(session, 80)
     assert active is None
+    async with session.begin():
+        closable = await get_host_active_lobby(session, 80, include_past_ttl=True)
+    assert closable is not None
+    assert closable.id == lobby.id
 
 
 @pytest.mark.asyncio

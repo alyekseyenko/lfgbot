@@ -15,7 +15,9 @@ from app.services.lobby_post_style import normalize_post_style
 from app.core.config import Settings
 from app.core.events import EventBus
 from app.services import lobbies as lobby_service
+from app.bot.party_code_config import party_code_max_length_from_runtime
 from app.services.guild_config import GuildConfigService
+from app.services.party_code import DEFAULT_PARTY_CODE_MAX_LENGTH
 from app.services.lfg_embed_style import lobby_embed_style_for_post
 
 
@@ -41,9 +43,14 @@ async def publish_lobby(
     post_style: str = "simple",
 ) -> discord.Message:
     ttl_minutes = settings.lobby_ttl_minutes
+    party_code_max_length = DEFAULT_PARTY_CODE_MAX_LENGTH
+    runtime = None
     if guild_config is not None and isinstance(channel, discord.abc.GuildChannel):
-        cfg = await guild_config.get_config_for_factory(session_factory, channel.guild.id)
-        ttl_minutes = cfg.lobby_ttl_minutes
+        runtime = await guild_config.get_config_for_factory(
+            session_factory, channel.guild.id
+        )
+        ttl_minutes = runtime.lobby_ttl_minutes
+        party_code_max_length = party_code_max_length_from_runtime(runtime)
     expires_in = timedelta(minutes=ttl_minutes)
     discord_guild_id: int | None = None
     if isinstance(channel, discord.abc.GuildChannel):
@@ -68,6 +75,7 @@ async def publish_lobby(
                 discord_guild_id=discord_guild_id,
                 create_source=create_source,
                 post_style=normalize_post_style(post_style),
+                party_code_max_length=party_code_max_length,
             )
 
     lobby_detail = await _load_lobby(session_factory, lobby.id)
@@ -91,15 +99,27 @@ async def publish_lobby(
         host_member=host_member,
     )
     style = normalize_post_style(post_style)
-    view = make_lobby_view(lobby.id, style)
+    show_close_button = True
+    show_edit_button = True
+    if embed_style is not None:
+        show_close_button = embed_style.visibility.show_close_button
+        show_edit_button = embed_style.visibility.show_edit_button
+    view = make_lobby_view(
+        lobby.id,
+        style,
+        show_close_button=show_close_button,
+        show_edit_button=show_edit_button,
+    )
     view.bind(session_factory, event_bus, guild_config)
     view.refresh_buttons("open", slots)
 
     message = await channel.send(
+        content=built.content or None,
         embed=built.embed,
         view=view,
         reference=reference,
         allowed_mentions=allowed_mentions_for_lobby(built),
+        silent=True,
     )
 
     async with session_factory() as session:

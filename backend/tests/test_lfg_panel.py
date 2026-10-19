@@ -19,7 +19,7 @@ from app.bot.lfg_panel import (
     rank_select_options_with_default,
     ranks_mode_select_options,
 )
-from app.services.lfg_embed_style import LobbyEmbedStyle
+from app.services.lfg_embed_style import LfgEmbedPanelSettings, LobbyEmbedStyle
 
 
 def _select_count_per_row(view: discord.ui.View) -> dict[int, int]:
@@ -36,7 +36,32 @@ def test_panel_embed_describes_current_flow() -> None:
     assert "🎯" in (embed.title or "")
     assert PANEL_EMBED_DESCRIPTION in (embed.description or "")
     assert "Criar grupo" in PANEL_EMBED_DESCRIPTION
-    assert "/procurar" in PANEL_EMBED_DESCRIPTION
+    assert "Publicar" in PANEL_EMBED_DESCRIPTION
+    assert "/procurar" not in PANEL_EMBED_DESCRIPTION
+    assert "/fechar" not in PANEL_EMBED_DESCRIPTION
+    assert "escolhe o tipo" not in PANEL_EMBED_DESCRIPTION.lower()
+
+
+def test_panel_embed_minimal_visibility() -> None:
+    style = LobbyEmbedStyle(
+        panel_thumbnail_url="https://example.com/t.png",
+        panel_footer_brand="Marca",
+        panel_visibility=LfgEmbedPanelSettings(
+            show_title=True,
+            show_lead=False,
+            show_body=False,
+            show_cta=False,
+            show_guide=False,
+            show_footer=False,
+            show_thumbnail=False,
+            show_banner=False,
+        ),
+    )
+    embed = build_panel_embed(style, guide_channel_id=123)
+    assert PANEL_EMBED_TITLE in (embed.title or "")
+    assert not (embed.description or "").strip()
+    assert embed.footer is None or not (embed.footer.text or "").strip()
+    assert embed.thumbnail is None or not getattr(embed.thumbnail, "url", None)
 
 
 def test_panel_embed_custom_brand_colour() -> None:

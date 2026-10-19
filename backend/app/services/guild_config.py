@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings, get_settings
 from app.db.models import Guild, GuildRoleMapping, GuildSettings
+from app.services.party_code import (
+    DEFAULT_PARTY_CODE_MAX_LENGTH,
+    clamp_party_code_max_length,
+)
 from app.services.host_recreate_cooldown import (
     DEFAULT_HOST_RECREATE_COOLDOWN_SECONDS,
     DEFAULT_IMMUNE_HOST_RECREATE_COOLDOWN_SECONDS,
@@ -26,11 +30,17 @@ from app.services.lfg_embed_style import (
     DEFAULT_UNRATED_COLOR,
     LFG_EMBED_COLOR_SOURCES,
     ImmuneEmbedTier,
+    LfgEmbedDetailedSettings,
+    LfgEmbedPanelSettings,
     LfgEmbedSimpleSettings,
     immune_embed_tiers_for_config,
+    lfg_embed_detailed_to_storage,
+    lfg_embed_panel_to_storage,
     lfg_embed_simple_to_storage,
     member_has_immune_role,
     normalize_lfg_embed_custom_texts,
+    normalize_lfg_embed_detailed,
+    normalize_lfg_embed_panel,
     normalize_lfg_embed_simple,
     normalize_rank_embed_colors,
     parse_embed_hex_color,
@@ -55,6 +65,14 @@ class GuildRuntimeConfig:
     discord_guild_id: int
     lfg_channel_ids: tuple[int, ...]
     announce_channel_id: int | None
+    weekly_leaderboard_anchor: date | None
+    reputation_channel_id: int
+    reputation_delay_minutes: int
+    reputation_enabled_at: datetime | None
+    reputation_negative_threshold: int
+    reputation_negative_role_id: int
+    reputation_positive_threshold: int
+    reputation_positive_role_id: int
     auto_format_messages: bool
     default_lfg_mode: str
     gamification_enabled: bool
@@ -62,6 +80,7 @@ class GuildRuntimeConfig:
     log_channel_id: int
     panel_sticky_enabled: bool
     lobby_ttl_minutes: int
+    party_code_max_length: int
     immune_role_ids: tuple[int, ...]
     lfg_embed_color_source: str
     rank_embed_colors: dict[str, str]
@@ -85,6 +104,10 @@ class GuildRuntimeConfig:
     lfg_panel_decorative: bool
     lfg_embed_thumbnail_url: str | None
     lfg_embed_simple: LfgEmbedSimpleSettings
+    lfg_embed_detailed: LfgEmbedDetailedSettings
+    lfg_embed_panel: LfgEmbedPanelSettings
+    lfg_post_style_simple_enabled: bool
+    lfg_post_style_detailed_enabled: bool
     immune_embed_enabled: bool
     immune_embed_color: str
     immune_embed_label: str
@@ -129,7 +152,9 @@ class GuildRuntimeConfig:
     def ranking_channel_allowed(self, channel_id: int, env_fallback: list[int]) -> bool:
         if self.channel_allowed(channel_id, env_fallback):
             return True
-        return bool(self.stats_channel_id) and channel_id == self.stats_channel_id
+        if bool(self.stats_channel_id) and channel_id == self.stats_channel_id:
+            return True
+        return bool(self.reputation_channel_id) and channel_id == self.reputation_channel_id
 
 
 def _int_list(raw: Any) -> list[int]:
@@ -156,6 +181,14 @@ def _settings_row_to_config(
             discord_guild_id=guild_id,
             lfg_channel_ids=tuple(env_lfg),
             announce_channel_id=None,
+            weekly_leaderboard_anchor=None,
+            reputation_channel_id=0,
+            reputation_delay_minutes=50,
+            reputation_enabled_at=None,
+            reputation_negative_threshold=-15,
+            reputation_negative_role_id=0,
+            reputation_positive_threshold=25,
+            reputation_positive_role_id=0,
             auto_format_messages=settings.auto_format_messages,
             default_lfg_mode=settings.default_lfg_mode,
             gamification_enabled=settings.gamification_enabled,
@@ -163,6 +196,7 @@ def _settings_row_to_config(
             log_channel_id=0,
             panel_sticky_enabled=settings.panel_sticky_enabled,
             lobby_ttl_minutes=settings.lobby_ttl_minutes,
+            party_code_max_length=DEFAULT_PARTY_CODE_MAX_LENGTH,
             immune_role_ids=(),
             lfg_embed_color_source="mode",
             rank_embed_colors={},
@@ -188,6 +222,10 @@ def _settings_row_to_config(
             lfg_embed_simple=normalize_lfg_embed_simple(
                 {}, fallback_footer_brand=DEFAULT_FOOTER_BRAND
             ),
+            lfg_embed_detailed=normalize_lfg_embed_detailed({}),
+            lfg_embed_panel=normalize_lfg_embed_panel({}),
+            lfg_post_style_simple_enabled=True,
+            lfg_post_style_detailed_enabled=True,
             immune_embed_enabled=True,
             immune_embed_color=DEFAULT_IMMUNE_EMBED_COLOR,
             immune_embed_label=DEFAULT_IMMUNE_EMBED_LABEL,
@@ -218,6 +256,22 @@ def _settings_row_to_config(
         discord_guild_id=guild_id,
         lfg_channel_ids=tuple(lfg_ids),
         announce_channel_id=row.announce_channel_id,
+        weekly_leaderboard_anchor=getattr(row, "weekly_leaderboard_anchor", None),
+        reputation_channel_id=int(getattr(row, "reputation_channel_id", 0) or 0),
+        reputation_delay_minutes=int(getattr(row, "reputation_delay_minutes", 50) or 50),
+        reputation_enabled_at=getattr(row, "reputation_enabled_at", None),
+        reputation_negative_threshold=int(
+            getattr(row, "reputation_negative_threshold", -15) or -15
+        ),
+        reputation_negative_role_id=int(
+            getattr(row, "reputation_negative_role_id", 0) or 0
+        ),
+        reputation_positive_threshold=int(
+            getattr(row, "reputation_positive_threshold", 25) or 25
+        ),
+        reputation_positive_role_id=int(
+            getattr(row, "reputation_positive_role_id", 0) or 0
+        ),
         auto_format_messages=row.auto_format_messages,
         default_lfg_mode=row.default_lfg_mode,
         gamification_enabled=row.gamification_enabled,
@@ -225,6 +279,9 @@ def _settings_row_to_config(
         log_channel_id=int(row.log_channel_id or 0),
         panel_sticky_enabled=row.panel_sticky_enabled,
         lobby_ttl_minutes=row.lobby_ttl_minutes,
+        party_code_max_length=clamp_party_code_max_length(
+            int(getattr(row, "party_code_max_length", DEFAULT_PARTY_CODE_MAX_LENGTH))
+        ),
         immune_role_ids=immune_ids,
         lfg_embed_color_source=(
             row.lfg_embed_color_source
@@ -268,6 +325,10 @@ def _settings_row_to_config(
             row.lfg_embed_simple,
             fallback_footer_brand=(row.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND),
         ),
+        lfg_embed_detailed=normalize_lfg_embed_detailed(row.lfg_embed_detailed),
+        lfg_embed_panel=normalize_lfg_embed_panel(row.lfg_embed_panel),
+        lfg_post_style_simple_enabled=bool(row.lfg_post_style_simple_enabled),
+        lfg_post_style_detailed_enabled=bool(row.lfg_post_style_detailed_enabled),
         immune_embed_enabled=bool(row.immune_embed_enabled),
         immune_embed_color=parse_embed_hex_color(
             row.immune_embed_color, default=DEFAULT_IMMUNE_EMBED_COLOR
@@ -453,6 +514,13 @@ class GuildConfigService:
         *,
         lfg_channel_ids: list[int] | None = None,
         announce_channel_id: int | None | object = ...,
+        weekly_leaderboard_anchor: date | None | object = ...,
+        reputation_channel_id: int | None = None,
+        reputation_delay_minutes: int | None = None,
+        reputation_negative_threshold: int | None = None,
+        reputation_negative_role_id: int | None = None,
+        reputation_positive_threshold: int | None = None,
+        reputation_positive_role_id: int | None = None,
         auto_format_messages: bool | None = None,
         default_lfg_mode: str | None = None,
         gamification_enabled: bool | None = None,
@@ -460,6 +528,7 @@ class GuildConfigService:
         log_channel_id: int | None = None,
         panel_sticky_enabled: bool | None = None,
         lobby_ttl_minutes: int | None = None,
+        party_code_max_length: int | None = None,
         immune_role_ids: list[int] | None = None,
         lfg_embed_color_source: str | None = None,
         rank_embed_colors: dict[str, str] | None = None,
@@ -499,12 +568,46 @@ class GuildConfigService:
         stats_legacy_joins: int | None = None,
         stats_legacy_users: int | None = None,
         lfg_embed_simple: dict[str, Any] | None = None,
+        lfg_embed_detailed: dict[str, Any] | None = None,
+        lfg_embed_panel: dict[str, Any] | None = None,
+        lfg_post_style_simple_enabled: bool | None = None,
+        lfg_post_style_detailed_enabled: bool | None = None,
     ) -> GuildSettings:
         row = await self.ensure_default_settings(session, guild_id)
         if lfg_channel_ids is not None:
             row.lfg_channel_ids = lfg_channel_ids
         if announce_channel_id is not ...:
             row.announce_channel_id = announce_channel_id  # type: ignore[assignment]
+        if weekly_leaderboard_anchor is not ...:
+            row.weekly_leaderboard_anchor = weekly_leaderboard_anchor  # type: ignore[assignment]
+        if reputation_channel_id is not None:
+            new_channel = max(0, int(reputation_channel_id))
+            old_channel = int(row.reputation_channel_id or 0)
+            if new_channel > 0 and old_channel <= 0:
+                row.reputation_enabled_at = datetime.now(UTC)
+            row.reputation_channel_id = new_channel
+        if reputation_delay_minutes is not None:
+            from app.services.reputation import clamp_reputation_delay_minutes
+
+            row.reputation_delay_minutes = clamp_reputation_delay_minutes(
+                reputation_delay_minutes
+            )
+        if reputation_negative_threshold is not None:
+            from app.services.reputation import clamp_reputation_negative_threshold
+
+            row.reputation_negative_threshold = clamp_reputation_negative_threshold(
+                reputation_negative_threshold
+            )
+        if reputation_negative_role_id is not None:
+            row.reputation_negative_role_id = max(0, int(reputation_negative_role_id))
+        if reputation_positive_threshold is not None:
+            from app.services.reputation import clamp_reputation_positive_threshold
+
+            row.reputation_positive_threshold = clamp_reputation_positive_threshold(
+                reputation_positive_threshold
+            )
+        if reputation_positive_role_id is not None:
+            row.reputation_positive_role_id = max(0, int(reputation_positive_role_id))
         if auto_format_messages is not None:
             row.auto_format_messages = auto_format_messages
         if default_lfg_mode is not None:
@@ -519,6 +622,8 @@ class GuildConfigService:
             row.panel_sticky_enabled = panel_sticky_enabled
         if lobby_ttl_minutes is not None:
             row.lobby_ttl_minutes = lobby_ttl_minutes
+        if party_code_max_length is not None:
+            row.party_code_max_length = clamp_party_code_max_length(party_code_max_length)
         if immune_role_ids is not None:
             row.immune_role_ids = immune_role_ids
         if lfg_embed_color_source is not None:
@@ -571,6 +676,22 @@ class GuildConfigService:
                 fallback_footer_brand=(row.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND),
             )
             row.lfg_embed_simple = lfg_embed_simple_to_storage(normalized)
+        if lfg_embed_detailed is not None:
+            merged_det = dict(row.lfg_embed_detailed or {})
+            merged_det.update(dict(lfg_embed_detailed))
+            row.lfg_embed_detailed = lfg_embed_detailed_to_storage(
+                normalize_lfg_embed_detailed(merged_det)
+            )
+        if lfg_embed_panel is not None:
+            merged_panel = dict(row.lfg_embed_panel or {})
+            merged_panel.update(dict(lfg_embed_panel))
+            row.lfg_embed_panel = lfg_embed_panel_to_storage(
+                normalize_lfg_embed_panel(merged_panel)
+            )
+        if lfg_post_style_simple_enabled is not None:
+            row.lfg_post_style_simple_enabled = lfg_post_style_simple_enabled
+        if lfg_post_style_detailed_enabled is not None:
+            row.lfg_post_style_detailed_enabled = lfg_post_style_detailed_enabled
         if lfg_embed_show_author is not None:
             row.lfg_embed_show_author = lfg_embed_show_author
         if lfg_embed_show_timestamp is not None:
@@ -709,6 +830,31 @@ class GuildConfigService:
         for (guild_id,) in result.all():
             config = await self.get_config(session, int(guild_id))
             if config.gamification_enabled and config.stats_post_channel_ids():
+                configs.append(config)
+        return configs
+
+    async def list_guilds_for_reputation(self, session: AsyncSession) -> list[GuildRuntimeConfig]:
+        result = await session.execute(
+            select(Guild.discord_guild_id).where(Guild.bot_removed_at.is_(None))
+        )
+        configs: list[GuildRuntimeConfig] = []
+        for (guild_id,) in result.all():
+            config = await self.get_config(session, int(guild_id))
+            if int(config.reputation_channel_id or 0) > 0:
+                configs.append(config)
+        return configs
+
+    async def list_guilds_for_creator_weekly(
+        self, session: AsyncSession
+    ) -> list[GuildRuntimeConfig]:
+        result = await session.execute(
+            select(Guild.discord_guild_id).where(Guild.bot_removed_at.is_(None))
+        )
+        configs: list[GuildRuntimeConfig] = []
+        for (guild_id,) in result.all():
+            config = await self.get_config(session, int(guild_id))
+            channel_id = int(config.announce_channel_id or 0)
+            if channel_id > 0 and config.weekly_leaderboard_anchor is not None:
                 configs.append(config)
         return configs
 

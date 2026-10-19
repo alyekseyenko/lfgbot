@@ -13,3 +13,22 @@ def normalize_post_style(raw: str | None) -> str:
 
 def is_simple_post_style(style: str | None) -> bool:
     return normalize_post_style(style) == POST_STYLE_SIMPLE
+
+
+def resolve_post_style_for_guild(
+    requested: str | None,
+    *,
+    simple_enabled: bool = True,
+    detailed_enabled: bool = True,
+) -> str:
+    """Aplica flags do admin: só modos permitidos."""
+    style = normalize_post_style(requested)
+    if simple_enabled and detailed_enabled:
+        return style
+    if not simple_enabled and not detailed_enabled:
+        return POST_STYLE_SIMPLE
+    if style == POST_STYLE_SIMPLE and not simple_enabled:
+        return POST_STYLE_INTERACTIVE
+    if style == POST_STYLE_INTERACTIVE and not detailed_enabled:
+        return POST_STYLE_SIMPLE
+    return style

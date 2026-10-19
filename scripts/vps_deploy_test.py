@@ -1,19 +1,17 @@
-"""Deploy lfg-test on VPS from GitHub. Uses VPS_SSH_PASSWORD env; optional local .env upload."""
+"""Deploy lfg-test on VPS from GitHub. Uses VPS_HOST and VPS_SSH_PASSWORD; optional local .env upload."""
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 import paramiko
 
-HOST = os.environ.get("VPS_HOST", "167.233.121.62")
-USER = os.environ.get("VPS_USER", "root")
-PASSWORD = os.environ.get("VPS_SSH_PASSWORD", "")
+from vps_common import connect_vps, vps_lfg_dir
+
 REPO = "https://github.com/alyekseyenko/lfgbot.git"
-DIR = os.environ.get("VPS_LFG_DIR", "/root/lfg-test")
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_ENV = ROOT / ".env"
+DIR = vps_lfg_dir()
 
 
 def run(client: paramiko.SSHClient, cmd: str, timeout: int = 600) -> tuple[int, str, str]:
@@ -23,12 +21,7 @@ def run(client: paramiko.SSHClient, cmd: str, timeout: int = 600) -> tuple[int, 
 
 
 def main() -> int:
-    if not PASSWORD:
-        print("Set VPS_SSH_PASSWORD", file=sys.stderr)
-        return 1
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(HOST, username=USER, password=PASSWORD, timeout=25, allow_agent=False, look_for_keys=False)
+    client = connect_vps()
 
     code, out, err = run(client, f"test -d {DIR}/.git && echo yes || echo no", timeout=30)
     if "yes" in out:
@@ -58,9 +51,9 @@ def main() -> int:
     print(out)
     if err.strip():
         print(err, file=sys.stderr)
-    code2, out2, _ = run(client, f"cd {DIR} && docker compose -f docker-compose.vps-test.yml ps", timeout=60)
+    _code2, out2, _ = run(client, f"cd {DIR} && docker compose -f docker-compose.vps-test.yml ps", timeout=60)
     print(out2)
-    code3, out3, _ = run(
+    _code3, out3, _ = run(
         client,
         "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8010/health/ready || echo fail",
         timeout=30,

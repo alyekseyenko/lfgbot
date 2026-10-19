@@ -78,12 +78,12 @@ async def build_player_profile(
     guild_ids: list[int],
     include_riot_id: bool,
 ) -> PlayerProfileView | None:
-    _ = guild_ids
     user = await session.get(User, target_id)
     if user is None:
         return None
 
-    stats = await profile_stats(session, target_id)
+    guild_id = guild_ids[0] if guild_ids else None
+    stats = await profile_stats(session, target_id, discord_guild_id=guild_id)
     recent_rows = await recent_completions(session, target_id, limit=5)
     recent = [(r.mode, r.kind, r.awarded_at) for r in recent_rows]
     rank_label, rank_icon = await _rank_summary(session, user.rank)

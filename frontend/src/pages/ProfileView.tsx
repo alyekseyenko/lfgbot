@@ -65,16 +65,16 @@ export function ProfileView({ profile, avatarUrl, riotEdit, children }: Props) {
 
       <div className="profile-grid">
         <Panel>
-          <h2>Nível LFG</h2>
+          <h2>Nível de criador</h2>
           <p className="profile-level">{profile.stats.level}</p>
           <p className="hint">{profile.stats.next_level_hint}</p>
         </Panel>
         <Panel>
           <h2>Estatísticas</h2>
           <ul className="profile-stats">
-            <li><span>Como host</span><strong>{profile.stats.host_completions}</strong></li>
-            <li><span>Como jogador</span><strong>{profile.stats.player_completions}</strong></li>
-            <li><span>Total</span><strong>{profile.stats.total_completions}</strong></li>
+            <li><span>Grupos criados</span><strong>{profile.stats.rooms_created}</strong></li>
+            <li><span>Completos (host)</span><strong>{profile.stats.host_completions}</strong></li>
+            <li><span>Completos (jogador)</span><strong>{profile.stats.player_completions}</strong></li>
             <li><span>Expulsões</span><strong>{profile.stats.kicks_received}</strong></li>
           </ul>
         </Panel>

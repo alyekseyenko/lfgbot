@@ -1,5 +1,8 @@
 from app.services.guild_config import GuildRuntimeConfig
 from app.services.lfg_embed_style import (
+    lfg_embed_simple_to_storage,
+    normalize_lfg_embed_detailed,
+    normalize_lfg_embed_panel,
     normalize_lfg_embed_simple,
     normalize_lfg_embed_simple_custom_texts,
     simple_lobby_embed_style_from_config,
@@ -22,6 +25,27 @@ def test_simple_embed_style_defaults_minimal() -> None:
     assert simple.decorative is False
     assert simple.show_author is False
     assert simple.color_source == "min_rank"
+    assert simple.show_close_button is True
+
+
+def test_normalize_simple_hides_close_button() -> None:
+    simple = normalize_lfg_embed_simple(
+        {"show_close_button": False},
+        fallback_footer_brand="LFG Valorant",
+    )
+    assert simple.show_close_button is False
+    stored = lfg_embed_simple_to_storage(simple)
+    assert stored["show_close_button"] is False
+
+
+def test_normalize_simple_hides_edit_button() -> None:
+    simple = normalize_lfg_embed_simple(
+        {"show_edit_button": False},
+        fallback_footer_brand="LFG Valorant",
+    )
+    assert simple.show_edit_button is False
+    stored = lfg_embed_simple_to_storage(simple)
+    assert stored["show_edit_button"] is False
 
 
 def test_simple_lobby_embed_style_from_config() -> None:
@@ -33,6 +57,14 @@ def test_simple_lobby_embed_style_from_config() -> None:
         discord_guild_id=1,
         lfg_channel_ids=(),
         announce_channel_id=None,
+        weekly_leaderboard_anchor=None,
+        reputation_channel_id=0,
+        reputation_delay_minutes=50,
+        reputation_enabled_at=None,
+        reputation_negative_threshold=-15,
+        reputation_negative_role_id=0,
+        reputation_positive_threshold=25,
+        reputation_positive_role_id=0,
         auto_format_messages=True,
         default_lfg_mode="Competitivo",
         gamification_enabled=False,
@@ -40,6 +72,7 @@ def test_simple_lobby_embed_style_from_config() -> None:
         log_channel_id=0,
         panel_sticky_enabled=True,
         lobby_ttl_minutes=45,
+        party_code_max_length=6,
         immune_role_ids=(),
         lfg_embed_color_source="mode",
         rank_embed_colors={},
@@ -63,6 +96,10 @@ def test_simple_lobby_embed_style_from_config() -> None:
         lfg_panel_decorative=True,
         lfg_embed_thumbnail_url=None,
         lfg_embed_simple=simple,
+        lfg_embed_detailed=normalize_lfg_embed_detailed({}),
+        lfg_embed_panel=normalize_lfg_embed_panel({}),
+        lfg_post_style_simple_enabled=True,
+        lfg_post_style_detailed_enabled=True,
         immune_embed_enabled=True,
         immune_embed_color="FFD700",
         immune_embed_label="VIP",

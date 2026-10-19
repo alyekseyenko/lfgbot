@@ -8,11 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api import create_api_app
 from app.bot.client import create_bot
 from app.bot.embed_updater import EmbedUpdater
+from app.bot.creator_level_roles import attach_creator_level_listener
+from app.bot.creator_level_tasks import creator_weekly_leaderboard_loop
+from app.bot.reputation_reactions import attach_reputation_reaction_handlers
+from app.bot.reputation_tasks import reputation_request_loop, reputation_weekly_loop
 from app.bot.gamification_roles import attach_gamification_listener
 from app.bot.gamification_tasks import leaderboard_loop
 from app.bot.guild_audit_log import attach_guild_audit_listener
 from app.bot.catalog_tasks import valorant_catalog_loop
-from app.bot.tasks import expiration_loop
+from app.bot.tasks import embed_reconciliation_loop, expiration_loop
 from app.core.config import get_settings
 from app.core.domain_event_session import set_domain_event_bus
 from app.core.events import EventBus
@@ -55,6 +59,8 @@ async def run() -> None:
     bot = create_bot(settings, session_factory, event_bus, embed_updater, guild_config)
     embed_updater.set_bot(bot)
     attach_gamification_listener(bot, settings, session_factory, event_bus)
+    attach_creator_level_listener(bot, session_factory, event_bus, guild_config)
+    attach_reputation_reaction_handlers(bot, session_factory, guild_config)
     attach_guild_audit_listener(bot, session_factory, event_bus, guild_config)
 
     api_app = create_api_app(settings, session_factory, bot, guild_config, event_bus)
@@ -71,9 +77,25 @@ async def run() -> None:
         expiration_loop(settings, session_factory, event_bus, embed_updater),
         name="expiration-loop",
     )
+    reconcile_task = asyncio.create_task(
+        embed_reconciliation_loop(settings, session_factory, embed_updater),
+        name="embed-reconciliation-loop",
+    )
     leaderboard_task = asyncio.create_task(
         leaderboard_loop(bot, settings, session_factory, guild_config),
         name="leaderboard-loop",
+    )
+    creator_weekly_task = asyncio.create_task(
+        creator_weekly_leaderboard_loop(bot, settings, session_factory, guild_config),
+        name="creator-weekly-leaderboard-loop",
+    )
+    reputation_request_task = asyncio.create_task(
+        reputation_request_loop(bot, settings, session_factory, guild_config),
+        name="reputation-request-loop",
+    )
+    reputation_weekly_task = asyncio.create_task(
+        reputation_weekly_loop(bot, session_factory, guild_config),
+        name="reputation-weekly-loop",
     )
     catalog_task = asyncio.create_task(
         valorant_catalog_loop(settings, session_factory),
@@ -98,13 +120,21 @@ async def run() -> None:
         api_server.should_exit = True
         updater_task.cancel()
         expire_task.cancel()
+        reconcile_task.cancel()
         leaderboard_task.cancel()
+        creator_weekly_task.cancel()
+        reputation_request_task.cancel()
+        reputation_weekly_task.cancel()
         catalog_task.cancel()
         api_task.cancel()
         await asyncio.gather(
             updater_task,
             expire_task,
+            reconcile_task,
             leaderboard_task,
+            creator_weekly_task,
+            reputation_request_task,
+            reputation_weekly_task,
             catalog_task,
             api_task,
             return_exceptions=True,

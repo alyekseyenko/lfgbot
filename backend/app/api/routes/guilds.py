@@ -22,6 +22,8 @@ from app.api.schemas import (
     InviteUrlOut,
     RoleMappingItem,
     RoleMappingsPut,
+    CreatorLevelItem,
+    CreatorLevelsPut,
     ValorantAgentRoleItem,
     ValorantAgentRolesPut,
 )
@@ -34,6 +36,12 @@ from app.api.snowflake import (
 from app.api.state import ApiState
 from app.services.guide_content import normalize_guide_body
 from app.services.guild_stats import guild_lobby_stats, guild_lobby_stats_lifetime
+from app.services.creator_levels import (
+    CreatorLevelDef,
+    ensure_default_creator_levels,
+    normalize_level_payload,
+    replace_creator_levels,
+)
 from app.services.guild_valorant_agents import (
     list_guild_agent_role_mappings,
     replace_guild_agent_role_mappings,
@@ -42,8 +50,12 @@ from app.services.lfg_embed_style import (
     DEFAULT_IMMUNE_EMBED_COLOR,
     DEFAULT_IMMUNE_EMBED_LABEL,
     immune_embed_tiers_for_config,
+    lfg_embed_detailed_to_storage,
+    lfg_embed_panel_to_storage,
     lfg_embed_simple_to_storage,
     normalize_lfg_embed_custom_texts,
+    normalize_lfg_embed_detailed,
+    normalize_lfg_embed_panel,
     normalize_lfg_embed_simple,
     normalize_rank_embed_colors,
     parse_embed_hex_color,
@@ -121,6 +133,21 @@ def _settings_to_out(row) -> GuildSettingsOut:
     return GuildSettingsOut(
         lfg_channel_ids=snowflake_list_to_str(lfg),
         announce_channel_id=snowflake_to_str(announce) if announce else None,
+        weekly_leaderboard_anchor=(
+            row.weekly_leaderboard_anchor.isoformat()
+            if getattr(row, "weekly_leaderboard_anchor", None)
+            else None
+        ),
+        reputation_channel_id=snowflake_to_str(int(row.reputation_channel_id or 0)),
+        reputation_delay_minutes=int(row.reputation_delay_minutes or 50),
+        reputation_negative_threshold=int(row.reputation_negative_threshold or -15),
+        reputation_negative_role_id=snowflake_to_str(
+            int(row.reputation_negative_role_id or 0)
+        ),
+        reputation_positive_threshold=int(row.reputation_positive_threshold or 25),
+        reputation_positive_role_id=snowflake_to_str(
+            int(row.reputation_positive_role_id or 0)
+        ),
         auto_format_messages=row.auto_format_messages,
         default_lfg_mode=row.default_lfg_mode,
         gamification_enabled=row.gamification_enabled,
@@ -128,6 +155,7 @@ def _settings_to_out(row) -> GuildSettingsOut:
         log_channel_id=snowflake_to_str(int(row.log_channel_id or 0)),
         panel_sticky_enabled=row.panel_sticky_enabled,
         lobby_ttl_minutes=row.lobby_ttl_minutes,
+        party_code_max_length=int(row.party_code_max_length),
         immune_role_ids=snowflake_list_to_str(immune),
         lfg_embed_color_source=row.lfg_embed_color_source or "mode",
         rank_embed_colors=normalize_rank_embed_colors(row.rank_embed_colors),
@@ -163,6 +191,14 @@ def _settings_to_out(row) -> GuildSettingsOut:
                 fallback_footer_brand=(row.lfg_embed_footer_brand or "LFG Valorant"),
             )
         ),
+        lfg_embed_detailed=lfg_embed_detailed_to_storage(
+            normalize_lfg_embed_detailed(row.lfg_embed_detailed)
+        ),
+        lfg_embed_panel=lfg_embed_panel_to_storage(
+            normalize_lfg_embed_panel(row.lfg_embed_panel)
+        ),
+        lfg_post_style_simple_enabled=bool(row.lfg_post_style_simple_enabled),
+        lfg_post_style_detailed_enabled=bool(row.lfg_post_style_detailed_enabled),
         immune_embed_enabled=bool(row.immune_embed_enabled),
         immune_embed_color=parse_embed_hex_color(
             row.immune_embed_color, default=DEFAULT_IMMUNE_EMBED_COLOR
@@ -266,6 +302,48 @@ async def patch_settings(
             if body.announce_channel_id in ("", "0")
             else parse_snowflake(body.announce_channel_id, field="announce_channel_id")
         )
+    if body.weekly_leaderboard_anchor is not None:
+        from datetime import date as date_type
+
+        raw_anchor = body.weekly_leaderboard_anchor.strip()
+        if raw_anchor in ("", "0"):
+            patch_kwargs["weekly_leaderboard_anchor"] = None
+        else:
+            try:
+                patch_kwargs["weekly_leaderboard_anchor"] = date_type.fromisoformat(raw_anchor)
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail="weekly_leaderboard_anchor tem de ser YYYY-MM-DD.",
+                ) from None
+    if body.reputation_channel_id is not None:
+        patch_kwargs["reputation_channel_id"] = (
+            0
+            if body.reputation_channel_id in ("", "0")
+            else parse_snowflake(body.reputation_channel_id, field="reputation_channel_id")
+        )
+    if body.reputation_delay_minutes is not None:
+        patch_kwargs["reputation_delay_minutes"] = body.reputation_delay_minutes
+    if body.reputation_negative_threshold is not None:
+        patch_kwargs["reputation_negative_threshold"] = body.reputation_negative_threshold
+    if body.reputation_negative_role_id is not None:
+        patch_kwargs["reputation_negative_role_id"] = (
+            0
+            if body.reputation_negative_role_id in ("", "0")
+            else parse_snowflake(
+                body.reputation_negative_role_id, field="reputation_negative_role_id"
+            )
+        )
+    if body.reputation_positive_threshold is not None:
+        patch_kwargs["reputation_positive_threshold"] = body.reputation_positive_threshold
+    if body.reputation_positive_role_id is not None:
+        patch_kwargs["reputation_positive_role_id"] = (
+            0
+            if body.reputation_positive_role_id in ("", "0")
+            else parse_snowflake(
+                body.reputation_positive_role_id, field="reputation_positive_role_id"
+            )
+        )
     if body.auto_format_messages is not None:
         patch_kwargs["auto_format_messages"] = body.auto_format_messages
     if body.default_lfg_mode is not None:
@@ -286,6 +364,8 @@ async def patch_settings(
         patch_kwargs["panel_sticky_enabled"] = body.panel_sticky_enabled
     if body.lobby_ttl_minutes is not None:
         patch_kwargs["lobby_ttl_minutes"] = body.lobby_ttl_minutes
+    if body.party_code_max_length is not None:
+        patch_kwargs["party_code_max_length"] = body.party_code_max_length
     if body.immune_role_ids is not None:
         patch_kwargs["immune_role_ids"] = parse_snowflake_list(body.immune_role_ids)
     if body.lfg_embed_color_source is not None:
@@ -334,6 +414,14 @@ async def patch_settings(
         patch_kwargs["lfg_embed_thumbnail_url"] = body.lfg_embed_thumbnail_url.strip() or None
     if body.lfg_embed_simple is not None:
         patch_kwargs["lfg_embed_simple"] = body.lfg_embed_simple
+    if body.lfg_embed_detailed is not None:
+        patch_kwargs["lfg_embed_detailed"] = body.lfg_embed_detailed
+    if body.lfg_embed_panel is not None:
+        patch_kwargs["lfg_embed_panel"] = body.lfg_embed_panel
+    if body.lfg_post_style_simple_enabled is not None:
+        patch_kwargs["lfg_post_style_simple_enabled"] = body.lfg_post_style_simple_enabled
+    if body.lfg_post_style_detailed_enabled is not None:
+        patch_kwargs["lfg_post_style_detailed_enabled"] = body.lfg_post_style_detailed_enabled
     if body.immune_embed_enabled is not None:
         patch_kwargs["immune_embed_enabled"] = body.immune_embed_enabled
     if body.immune_embed_color is not None:
@@ -391,9 +479,25 @@ async def patch_settings(
             if changed_kwargs:
                 row = await state.guild_config.update_settings(session, gid, **changed_kwargs)
         out = _settings_to_out(row)
+    panel_fields_changed = bool(
+        changed_kwargs
+        and (
+            "panel_sticky_enabled" in changed_kwargs
+            or "lfg_channel_ids" in changed_kwargs
+            or "lfg_embed_panel" in changed_kwargs
+            or "lfg_embed_custom_texts" in changed_kwargs
+            or "lfg_panel_thumbnail_url" in changed_kwargs
+            or "lfg_panel_color" in changed_kwargs
+            or "lfg_panel_footer_brand" in changed_kwargs
+            or "lfg_panel_banner_url" in changed_kwargs
+            or "lfg_panel_decorative" in changed_kwargs
+            or "lfg_embed_banner_on_panel" in changed_kwargs
+            or "guide_channel_id" in changed_kwargs
+        )
+    )
     if (
         out.panel_sticky_enabled
-        and (body.panel_sticky_enabled is not None or body.lfg_channel_ids is not None)
+        and panel_fields_changed
         and isinstance(state.bot, commands.Bot)
         and state.bot.is_ready()
     ):
@@ -600,6 +704,53 @@ async def put_valorant_agent_roles(
         )
         for row in rows
     ]
+
+
+def _creator_levels_out(levels: list[CreatorLevelDef]) -> list[CreatorLevelItem]:
+    return [
+        CreatorLevelItem(
+            level_number=item.level_number,
+            name=item.name,
+            min_rooms=item.min_rooms,
+            discord_role_id=str(item.discord_role_id) if item.discord_role_id else None,
+        )
+        for item in levels
+    ]
+
+
+@router.get("/guilds/{guild_id}/creator-levels", response_model=list[CreatorLevelItem])
+async def get_creator_levels(
+    guild_id: str,
+    state: ApiStateDep,
+    user: SessionUserDep,
+) -> list[CreatorLevelItem]:
+    gid = _guild_id_param(guild_id)
+    await _assert_manage_guild(user, gid)
+    async with state.session_factory() as session:
+        async with session.begin():
+            await state.guild_config.ensure_default_settings(session, gid)
+            levels = await ensure_default_creator_levels(session, gid)
+    return _creator_levels_out(levels)
+
+
+@router.put("/guilds/{guild_id}/creator-levels", response_model=list[CreatorLevelItem])
+async def put_creator_levels(
+    guild_id: str,
+    body: CreatorLevelsPut,
+    state: ApiStateDep,
+    user: SessionUserDep,
+) -> list[CreatorLevelItem]:
+    gid = _guild_id_param(guild_id)
+    await _assert_manage_guild(user, gid)
+    try:
+        payload = normalize_level_payload([item.model_dump() for item in body.levels])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async with state.session_factory() as session:
+        async with session.begin():
+            await state.guild_config.ensure_default_settings(session, gid)
+            levels = await replace_creator_levels(session, gid, payload)
+    return _creator_levels_out(levels)
 
 
 @router.post("/guilds/{guild_id}/guide/publish")

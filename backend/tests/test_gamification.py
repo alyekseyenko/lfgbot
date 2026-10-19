@@ -66,7 +66,7 @@ async def _full_lobby(
             host=host,
             mode="Unrated",
             slots=slots,
-            party_code="X",
+            party_code="X00001",
             expires_in=timedelta(minutes=30),
         )
         lobby.created_at = datetime.now(UTC) - timedelta(minutes=age_minutes)

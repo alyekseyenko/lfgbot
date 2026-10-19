@@ -11,13 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.bot.discord_roles import extract_rank_bounds_from_roles, extract_wanted_agents_from_roles
 from app.bot.embeds import allowed_mentions_for_roles
 from app.bot.gamification_roles import sync_member_lfg_roles
-from app.bot.gamification_tasks import weekly_leaderboard_embed
+from app.bot.reputation_roles import sync_member_reputation_roles
+from app.bot.ranking_embed import (
+    RANKING_PAGE_SIZE,
+    all_time_creators_embed_paged,
+    reputation_leaderboard_embed,
+)
 from app.bot.guild_audit_log import send_guild_audit_log
 from app.bot.host_cooldown import resolve_host_recreate_cooldown
 from app.bot.lfg_panel import notify_panel_sticky_activity, publish_panel_message_bound
+from app.bot.message_context_menus import register_message_context_menus
 from app.bot.lobby_create import LobbyCreateParams, begin_lobby_create
 from app.bot.members import upsert_user_from_member
 from app.bot.message_parser import parse_lfg_message
+from app.bot.party_code_config import party_code_max_length_from_runtime
 from app.bot.profile_embed import build_profile_embed
 from app.core.config import Settings
 from app.core.events import EventBus
@@ -27,6 +34,7 @@ from app.services.errors import (
     LobbyEditError,
     LobbyNotJoinableError,
     PartyCodeInUseError,
+    PartyCodeInvalidError,
     RankRangeError,
 )
 from app.services.gamification import last_completion_at, profile_stats, recent_completions
@@ -39,6 +47,7 @@ from app.services.lobby_post_style import (
     POST_STYLE_SIMPLE,
     is_simple_post_style,
     normalize_post_style,
+    resolve_post_style_for_guild,
 )
 from app.services.lobby_source import LOBBY_SOURCE_CHAT, LOBBY_SOURCE_SLASH
 from app.services.ranks import AGENT_ROLES, VALORANT_RANKS
@@ -81,7 +90,7 @@ RANKS_MODE_CHOICES = [
 
 POST_STYLE_CHOICES = [
     app_commands.Choice(
-        name="Simples (código no canal, só Fechar)",
+        name="Simples (código no canal, fecha com /fechar)",
         value=POST_STYLE_SIMPLE,
     ),
     app_commands.Choice(
@@ -128,7 +137,7 @@ class LfgCog(commands.Cog):
     )
     @app_commands.describe(
         vagas="Quantas pessoas precisas (1 a 4, padrão 2)",
-        codigo="Código da party (recomendado no modo simples)",
+        codigo="Código da party (tamanho definido no /admin; recomendado no simples)",
         tipo="Opcional: Detalhado = Entrar/Sair e mais opções no Discord",
         rank_minimo="Rank mínimo (opcional)",
         rank_maximo="Rank máximo (opcional)",
@@ -189,7 +198,11 @@ class LfgCog(commands.Cog):
         else:
             mode = runtime.default_lfg_mode if runtime else self.settings.default_lfg_mode
 
-        post_style = normalize_post_style(tipo.value if tipo else None)
+        post_style = resolve_post_style_for_guild(
+            tipo.value if tipo else None,
+            simple_enabled=runtime.lfg_post_style_simple_enabled if runtime else True,
+            detailed_enabled=runtime.lfg_post_style_detailed_enabled if runtime else True,
+        )
         simple = is_simple_post_style(post_style)
         if simple:
             visibility = "public"
@@ -250,28 +263,18 @@ class LfgCog(commands.Cog):
         utilizador: discord.Member | None = None,
         publico: bool = False,
     ) -> None:
-        if interaction.channel_id is None:
-            await interaction.response.send_message("Canal inválido.", ephemeral=True)
-            return
-
-        guild_id = interaction.guild.id if interaction.guild else None
-        if not await self._channel_allowed(guild_id, interaction.channel_id):
+        if interaction.guild is None:
             await interaction.response.send_message(
-                "Este comando só está disponível nos canais LFG configurados.",
+                "Este comando só funciona num servidor.",
                 ephemeral=True,
             )
             return
 
+        guild_id = interaction.guild.id
         runtime = await self._guild_runtime(guild_id) if guild_id is not None else None
         gamification_on = (
             runtime.gamification_enabled if runtime else self.settings.gamification_enabled
         )
-        if not gamification_on:
-            await interaction.response.send_message(
-                "A gamificação LFG não está ativa neste servidor.",
-                ephemeral=True,
-            )
-            return
 
         target = utilizador or interaction.user
         if target is None:
@@ -285,13 +288,22 @@ class LfgCog(commands.Cog):
                     await upsert_user_from_member(session, target)
 
         async with self.session_factory() as session:
-            stats = await profile_stats(session, target.id)
+            stats = await profile_stats(
+                session,
+                target.id,
+                discord_guild_id=guild_id,
+            )
             last_at = await last_completion_at(session, target.id)
             recent = await recent_completions(session, target.id, limit=3)
             rank_result = await session.execute(
                 select(User.rank).where(User.discord_id == target.id)
             )
             valorant_rank = rank_result.scalar_one_or_none()
+            from app.services.reputation import user_reputation_score
+
+            reputation_score = await user_reputation_score(
+                session, discord_guild_id=guild_id, user_id=target.id
+            )
 
         display_name = target.display_name if hasattr(target, "display_name") else str(target)
         avatar_url = target.display_avatar.url if isinstance(target, discord.Member) else None
@@ -303,6 +315,7 @@ class LfgCog(commands.Cog):
             last_completed_at=last_at,
             recent=recent,
             avatar_url=avatar_url,
+            reputation_score=reputation_score,
         )
         await interaction.followup.send(
             embed=built.embed,
@@ -310,7 +323,24 @@ class LfgCog(commands.Cog):
             allowed_mentions=allowed_mentions_for_roles(built.mention_role_ids),
         )
 
-        if isinstance(target, discord.Member) and interaction.guild is not None:
+        if isinstance(target, discord.Member):
+            try:
+                await sync_member_reputation_roles(
+                    self.session_factory, self.guild_config, target
+                )
+            except discord.Forbidden:
+                logger.warning(
+                    "sem permissão para roles de reputação ao mostrar perfil de %s",
+                    target.id,
+                )
+            except discord.HTTPException:
+                logger.exception("falha ao sincronizar roles de reputação no /perfil")
+
+        if (
+            gamification_on
+            and isinstance(target, discord.Member)
+            and interaction.guild is not None
+        ):
             try:
                 await sync_member_lfg_roles(self.session_factory, target)
             except discord.Forbidden:
@@ -320,43 +350,154 @@ class LfgCog(commands.Cog):
 
     @app_commands.command(
         name="ranking",
-        description="Top 5 da semana (canais LFG ou canal de ranking no dashboard).",
+        description="Ranking de grupos LFG criados (histórico completo, com páginas).",
     )
-    @app_commands.describe(publico="Mostrar no canal (visível para todos)")
+    @app_commands.describe(
+        pagina="Página do ranking (10 pessoas por página)",
+        publico="Mostrar no canal (visível para todos)",
+    )
     async def ranking(
         self,
         interaction: discord.Interaction,
+        pagina: app_commands.Range[int, 1, 100] = 1,
         publico: bool = False,
     ) -> None:
-        if interaction.channel_id is None:
-            await interaction.response.send_message("Canal inválido.", ephemeral=True)
-            return
-
-        guild_id = interaction.guild.id if interaction.guild else None
-        if not await self.guild_config.ranking_channel_allowed(
-            self.session_factory, guild_id, interaction.channel_id
-        ):
+        if interaction.guild is None:
             await interaction.response.send_message(
-                "Este comando só está disponível nos canais LFG ou no canal de "
-                "ranking configurado no dashboard.",
+                "Este comando só funciona num servidor.",
                 ephemeral=True,
             )
             return
 
-        runtime = await self._guild_runtime(guild_id) if guild_id is not None else None
-        gamification_on = (
-            runtime.gamification_enabled if runtime else self.settings.gamification_enabled
+        guild_id = interaction.guild.id
+        await interaction.response.defer(ephemeral=not publico)
+        embed = await all_time_creators_embed_paged(
+            self.session_factory,
+            discord_guild_id=guild_id,
+            page=pagina,
+            page_size=RANKING_PAGE_SIZE,
         )
-        if not gamification_on:
+        await interaction.followup.send(embed=embed, ephemeral=not publico)
+
+    @app_commands.command(
+        name="reputacao",
+        description="Ranking de reputação LFG (votos após grupos completos).",
+    )
+    @app_commands.describe(
+        pagina="Página do ranking (10 pessoas por página)",
+        publico="Mostrar no canal (visível para todos)",
+    )
+    async def reputacao(
+        self,
+        interaction: discord.Interaction,
+        pagina: app_commands.Range[int, 1, 100] = 1,
+        publico: bool = False,
+    ) -> None:
+        if interaction.guild is None:
             await interaction.response.send_message(
-                "A gamificação LFG não está ativa neste servidor.",
+                "Este comando só funciona num servidor.",
+                ephemeral=True,
+            )
+            return
+
+        guild_id = interaction.guild.id
+        runtime = await self._guild_runtime(guild_id)
+        reputation_on = bool(runtime and int(runtime.reputation_channel_id or 0) > 0)
+        if not reputation_on:
+            await interaction.response.send_message(
+                "A reputação LFG ainda não está configurada neste servidor "
+                "(canal no dashboard → Geral).",
                 ephemeral=True,
             )
             return
 
         await interaction.response.defer(ephemeral=not publico)
-        embed = await weekly_leaderboard_embed(self.session_factory)
+        embed = await reputation_leaderboard_embed(
+            self.session_factory,
+            discord_guild_id=guild_id,
+            page=pagina,
+            page_size=RANKING_PAGE_SIZE,
+        )
         await interaction.followup.send(embed=embed, ephemeral=not publico)
+
+    @app_commands.command(
+        name="reputacao-ajustar",
+        description="(Staff) Adicionar ou remover pontos de reputação LFG a um membro.",
+    )
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        utilizador="Membro a ajustar",
+        pontos="Pontos a somar (negativo para remover, ex.: -5 ou 10)",
+        motivo="Motivo opcional (aparece no log do servidor)",
+    )
+    async def reputacao_ajustar(
+        self,
+        interaction: discord.Interaction,
+        utilizador: discord.Member,
+        pontos: int,
+        motivo: str | None = None,
+    ) -> None:
+        if interaction.guild is None or interaction.user is None:
+            await interaction.response.send_message("Servidor inválido.", ephemeral=True)
+            return
+
+        from app.services.reputation import (
+            add_reputation_adjustment,
+            clamp_reputation_adjust_delta,
+        )
+
+        delta = clamp_reputation_adjust_delta(pontos)
+        if delta == 0:
+            await interaction.response.send_message(
+                "Indica pontos diferentes de zero (entre -500 e 500).",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        guild_id = interaction.guild.id
+        async with self.session_factory() as session:
+            async with session.begin():
+                await upsert_user_from_member(session, utilizador)
+                if isinstance(interaction.user, discord.Member):
+                    await upsert_user_from_member(session, interaction.user)
+                new_score = await add_reputation_adjustment(
+                    session,
+                    discord_guild_id=guild_id,
+                    user_id=utilizador.id,
+                    delta=delta,
+                    created_by_id=interaction.user.id,
+                )
+
+        try:
+            await sync_member_reputation_roles(
+                self.session_factory, self.guild_config, utilizador
+            )
+        except discord.HTTPException:
+            logger.exception("falha ao sincronizar roles após ajuste de reputação")
+
+        sign = "+" if delta > 0 else ""
+        reason_line = f"\nMotivo: {motivo.strip()}" if motivo and motivo.strip() else ""
+        await interaction.followup.send(
+            f"Ajustei a reputação de {utilizador.mention}: **{sign}{delta}** "
+            f"(total **{new_score}**).{reason_line}",
+            ephemeral=True,
+        )
+
+        from app.bot.guild_audit_log import send_guild_audit_log
+
+        await send_guild_audit_log(
+            self.bot,
+            self.guild_config,
+            self.session_factory,
+            guild_id,
+            title="Reputação · ajuste manual",
+            description=(
+                f"<@{interaction.user.id}> aplicou **{sign}{delta}** a <@{utilizador.id}> "
+                f"(total **{new_score}**).{reason_line}"
+            ),
+            colour=discord.Colour.blurple(),
+        )
 
     @app_commands.command(
         name="lfg-stats",
@@ -607,7 +748,9 @@ class LfgCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         async with self.session_factory() as session:
-            active = await lobby_service.get_host_active_lobby(session, interaction.user.id)
+            active = await lobby_service.get_host_active_lobby(
+                session, interaction.user.id, include_past_ttl=True
+            )
 
         if active is None:
             await interaction.followup.send("Não tens nenhum grupo aberto.", ephemeral=True)
@@ -660,7 +803,7 @@ class LfgCog(commands.Cog):
         vagas="Novas vagas (1 a 4)",
         rank_minimo="Novo rank mínimo (ou Sem limite para remover)",
         rank_maximo="Novo rank máximo (ou Sem limite para remover)",
-        codigo="Novo código da party",
+        codigo="Novo código da party (tamanho definido no /admin)",
         codigo_visibilidade="Público ou privado",
         ranks_modo="Ranks informativos ou verificados",
         agente_1="Roles procuradas (Initiator, etc.)",
@@ -745,6 +888,8 @@ class LfgCog(commands.Cog):
             )
             return
 
+        runtime = await self._guild_runtime(guild_id) if guild_id is not None else None
+        code_len = party_code_max_length_from_runtime(runtime)
         try:
             async with self.session_factory() as session:
                 async with session.begin():
@@ -754,8 +899,15 @@ class LfgCog(commands.Cog):
                         lobby_id=active.id,
                         host_id=interaction.user.id,
                         patch=patch,
+                        party_code_max_length=code_len,
                     )
-        except (LobbyEditError, LobbyNotJoinableError, RankRangeError, PartyCodeInUseError) as exc:
+        except (
+            LobbyEditError,
+            LobbyNotJoinableError,
+            RankRangeError,
+            PartyCodeInUseError,
+            PartyCodeInvalidError,
+        ) as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return
         except Exception:
@@ -797,7 +949,10 @@ class LfgCog(commands.Cog):
         if not isinstance(message.author, discord.Member):
             return
 
-        parsed = parse_lfg_message(message.content)
+        code_len = party_code_max_length_from_runtime(runtime)
+        parsed = parse_lfg_message(
+            message.content, party_code_max_length=code_len
+        )
         if parsed is None:
             return
 
@@ -850,3 +1005,4 @@ async def setup_lfg_cog(
     guild_config: GuildConfigService,
 ) -> None:
     await bot.add_cog(LfgCog(bot, settings, session_factory, event_bus, guild_config))
+    register_message_context_menus(bot)

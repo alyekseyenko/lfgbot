@@ -1,8 +1,33 @@
-import type { LfgEmbedSimpleSettings } from "./embedAdminConfig";
+import type {
+  LfgEmbedDetailedSettings,
+  LfgEmbedPanelSettings,
+  LfgEmbedSimpleSettings,
+} from "./embedAdminConfig";
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
 const COLOR_SOURCES = new Set(["mode", "host_rank", "min_rank", "max_rank"]);
+
+function optionalBool(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function normalizeLfgEmbedPanel(raw: unknown): LfgEmbedPanelSettings {
+  const o =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return {
+    show_title: optionalBool(o.show_title),
+    show_lead: optionalBool(o.show_lead),
+    show_body: optionalBool(o.show_body),
+    show_cta: optionalBool(o.show_cta),
+    show_guide: optionalBool(o.show_guide),
+    show_footer: optionalBool(o.show_footer),
+    show_thumbnail: optionalBool(o.show_thumbnail),
+    show_banner: optionalBool(o.show_banner),
+  };
+}
 
 function normalizeLfgEmbedSimple(raw: unknown): LfgEmbedSimpleSettings {
   const o =
@@ -23,7 +48,7 @@ function normalizeLfgEmbedSimple(raw: unknown): LfgEmbedSimpleSettings {
       typeof o.competitive_color === "string" ? o.competitive_color : undefined,
     unrated_color: typeof o.unrated_color === "string" ? o.unrated_color : undefined,
     inactive_color: typeof o.inactive_color === "string" ? o.inactive_color : undefined,
-    decorative: typeof o.decorative === "boolean" ? o.decorative : undefined,
+    decorative: optionalBool(o.decorative),
     footer_brand:
       typeof o.footer_brand === "string"
         ? o.footer_brand
@@ -31,16 +56,27 @@ function normalizeLfgEmbedSimple(raw: unknown): LfgEmbedSimpleSettings {
           ? null
           : undefined,
     custom_texts: { ...texts },
-    show_author: typeof o.show_author === "boolean" ? o.show_author : undefined,
-    show_timestamp: typeof o.show_timestamp === "boolean" ? o.show_timestamp : undefined,
-    show_rank_thumbnail:
-      typeof o.show_rank_thumbnail === "boolean" ? o.show_rank_thumbnail : undefined,
+    show_author: optionalBool(o.show_author),
+    show_timestamp: optionalBool(o.show_timestamp),
+    show_rank_thumbnail: optionalBool(o.show_rank_thumbnail),
     lobby_thumbnail_url:
       typeof o.lobby_thumbnail_url === "string"
         ? o.lobby_thumbnail_url
         : o.lobby_thumbnail_url === null
           ? null
           : undefined,
+    show_title: optionalBool(o.show_title),
+    show_hint: optionalBool(o.show_hint),
+    show_host_line: optionalBool(o.show_host_line),
+    host_as_mention: optionalBool(o.host_as_mention),
+    show_party_code: optionalBool(o.show_party_code),
+    show_slots: optionalBool(o.show_slots),
+    show_rank: optionalBool(o.show_rank),
+    show_expires: optionalBool(o.show_expires),
+    show_footer: optionalBool(o.show_footer),
+    show_footer_rank_hint: optionalBool(o.show_footer_rank_hint),
+    show_close_button: optionalBool(o.show_close_button),
+    show_edit_button: optionalBool(o.show_edit_button),
   };
 }
 
@@ -82,6 +118,13 @@ export const MAX_IMMUNE_EMBED_TIERS = 5;
 export type GuildSettings = {
   lfg_channel_ids: Snowflake[];
   announce_channel_id: Snowflake | null;
+  weekly_leaderboard_anchor: string | null;
+  reputation_channel_id: Snowflake;
+  reputation_delay_minutes: number;
+  reputation_negative_threshold: number;
+  reputation_negative_role_id: Snowflake;
+  reputation_positive_threshold: number;
+  reputation_positive_role_id: Snowflake;
   auto_format_messages: boolean;
   default_lfg_mode: string;
   gamification_enabled: boolean;
@@ -89,6 +132,7 @@ export type GuildSettings = {
   log_channel_id: Snowflake;
   panel_sticky_enabled: boolean;
   lobby_ttl_minutes: number;
+  party_code_max_length: number;
   immune_role_ids: Snowflake[];
   lfg_embed_color_source: "mode" | "host_rank" | "min_rank" | "max_rank";
   rank_embed_colors: Record<string, string>;
@@ -112,6 +156,10 @@ export type GuildSettings = {
   lfg_panel_decorative: boolean;
   lfg_embed_thumbnail_url: string | null;
   lfg_embed_simple: LfgEmbedSimpleSettings;
+  lfg_embed_detailed: LfgEmbedDetailedSettings;
+  lfg_embed_panel: LfgEmbedPanelSettings;
+  lfg_post_style_simple_enabled: boolean;
+  lfg_post_style_detailed_enabled: boolean;
   immune_embed_enabled: boolean;
   immune_embed_color: string;
   immune_embed_label: string;
@@ -179,11 +227,21 @@ export type PlayerProfile = {
     total_completions: number;
     kicks_received: number;
     next_level_hint: string;
+    rooms_created: number;
+    next_min_rooms: number | null;
+    creator_level_number: number;
   };
   recent: { mode: string; kind: string; awarded_at: string }[];
   agents: ValorantAgent[];
   player_card_wide_url: string | null;
   is_self: boolean;
+};
+
+export type CreatorLevel = {
+  level_number: number;
+  name: string;
+  min_rooms: number;
+  discord_role_id: string | null;
 };
 
 export type GuildStats = {
@@ -252,6 +310,22 @@ export function normalizeGuildSettings(s: Partial<GuildSettings>): GuildSettings
   return {
     lfg_channel_ids: s.lfg_channel_ids ?? [],
     announce_channel_id: s.announce_channel_id ?? null,
+    weekly_leaderboard_anchor: s.weekly_leaderboard_anchor ?? null,
+    reputation_channel_id: s.reputation_channel_id ?? "0",
+    reputation_delay_minutes:
+      typeof s.reputation_delay_minutes === "number"
+        ? Math.min(180, Math.max(10, Math.trunc(s.reputation_delay_minutes)))
+        : 50,
+    reputation_negative_threshold:
+      typeof s.reputation_negative_threshold === "number"
+        ? Math.min(-1, Math.max(-10000, Math.trunc(s.reputation_negative_threshold)))
+        : -15,
+    reputation_negative_role_id: s.reputation_negative_role_id ?? "0",
+    reputation_positive_threshold:
+      typeof s.reputation_positive_threshold === "number"
+        ? Math.min(10000, Math.max(1, Math.trunc(s.reputation_positive_threshold)))
+        : 25,
+    reputation_positive_role_id: s.reputation_positive_role_id ?? "0",
     auto_format_messages: s.auto_format_messages ?? true,
     default_lfg_mode: s.default_lfg_mode ?? "Competitivo",
     gamification_enabled: s.gamification_enabled ?? false,
@@ -259,6 +333,10 @@ export function normalizeGuildSettings(s: Partial<GuildSettings>): GuildSettings
     log_channel_id: s.log_channel_id ?? "0",
     panel_sticky_enabled: s.panel_sticky_enabled ?? true,
     lobby_ttl_minutes: s.lobby_ttl_minutes ?? 45,
+    party_code_max_length:
+      typeof s.party_code_max_length === "number"
+        ? Math.min(12, Math.max(4, Math.trunc(s.party_code_max_length)))
+        : 6,
     immune_role_ids,
     lfg_embed_color_source: s.lfg_embed_color_source ?? "mode",
     rank_embed_colors: { ...(s.rank_embed_colors ?? {}) },
@@ -294,6 +372,13 @@ export function normalizeGuildSettings(s: Partial<GuildSettings>): GuildSettings
     lfg_panel_decorative: s.lfg_panel_decorative ?? true,
     lfg_embed_thumbnail_url: (s.lfg_embed_thumbnail_url ?? "").trim() || null,
     lfg_embed_simple: normalizeLfgEmbedSimple(s.lfg_embed_simple),
+    lfg_embed_detailed:
+      s.lfg_embed_detailed && typeof s.lfg_embed_detailed === "object"
+        ? (s.lfg_embed_detailed as LfgEmbedDetailedSettings)
+        : {},
+    lfg_embed_panel: normalizeLfgEmbedPanel(s.lfg_embed_panel),
+    lfg_post_style_simple_enabled: s.lfg_post_style_simple_enabled ?? true,
+    lfg_post_style_detailed_enabled: s.lfg_post_style_detailed_enabled ?? true,
     immune_embed_enabled: s.immune_embed_enabled ?? true,
     immune_embed_color: s.immune_embed_color ?? "FFD700",
     immune_embed_label: s.immune_embed_label ?? "Pedido em destaque",
@@ -355,6 +440,14 @@ export const api = {
       method: "PUT",
       headers: jsonHeaders,
       body: JSON.stringify({ mappings }),
+    }),
+  creatorLevels: (guildId: Snowflake) =>
+    request<CreatorLevel[]>(`/guilds/${guildId}/creator-levels`),
+  putCreatorLevels: (guildId: Snowflake, levels: CreatorLevel[]) =>
+    request<CreatorLevel[]>(`/guilds/${guildId}/creator-levels`, {
+      method: "PUT",
+      headers: jsonHeaders,
+      body: JSON.stringify({ levels }),
     }),
   myProfile: () => request<PlayerProfile>("/profiles/me"),
   patchMyProfile: (body: { riot_id?: string | null; player_card_uuid?: string | null }) =>

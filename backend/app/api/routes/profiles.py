@@ -38,6 +38,9 @@ def _profile_to_out(view) -> PlayerProfileOut:
             total_completions=view.stats.total_completions,
             kicks_received=view.stats.kicks_received,
             next_level_hint=view.stats.next_level_hint,
+            rooms_created=view.stats.rooms_created,
+            next_min_rooms=view.stats.next_min_rooms,
+            creator_level_number=view.stats.creator_level_number,
         ),
         recent=[
             RecentCompletionOut(

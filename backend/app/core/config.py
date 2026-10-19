@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     lobby_ttl_minutes: int = 45
     expire_poll_seconds: int = 30
+    reconcile_poll_seconds: int = 300
     embed_debounce_seconds: float = 2.0
     expired_mode: Literal["edit", "delete"] = "edit"
     auto_format_messages: bool = True

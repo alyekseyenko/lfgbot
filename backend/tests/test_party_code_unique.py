@@ -7,15 +7,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import EventBus
 from app.db.models import User
-from app.services.errors import PartyCodeInUseError
+from app.services.errors import PartyCodeInUseError, PartyCodeInvalidError
 from app.services.lobbies import create_lobby
 from app.services.party_code import normalize_party_code
 
 
 def test_normalize_party_code() -> None:
-    assert normalize_party_code("  xxxs2 ") == "XXXS2"
+    assert normalize_party_code("  abc123 ") == "ABC123"
     assert normalize_party_code("") is None
     assert normalize_party_code(None) is None
+
+
+def test_normalize_party_code_rejects_invalid() -> None:
+    with pytest.raises(PartyCodeInvalidError):
+        normalize_party_code("ABC12")
+    with pytest.raises(PartyCodeInvalidError):
+        normalize_party_code("ABCDEF")
+    with pytest.raises(PartyCodeInvalidError):
+        normalize_party_code("ABC123EXTRA")
 
 
 @pytest.mark.asyncio
@@ -34,7 +43,7 @@ async def test_duplicate_active_party_code_same_guild_rejected(
         host=host_a,
         mode="Competitivo",
         slots=2,
-        party_code="XXXS2",
+        party_code="XXXS21",
         expires_in=timedelta(hours=1),
         discord_guild_id=guild_id,
     )
@@ -48,7 +57,7 @@ async def test_duplicate_active_party_code_same_guild_rejected(
                 host=host_b,
                 mode="Competitivo",
                 slots=2,
-                party_code="xxxs2",
+                party_code="xxxs21",
                 expires_in=timedelta(hours=1),
                 discord_guild_id=guild_id,
             )

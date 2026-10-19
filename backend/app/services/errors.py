@@ -38,5 +38,9 @@ class PartyCodeInUseError(LfgError):
     pass
 
 
+class PartyCodeInvalidError(LfgError):
+    pass
+
+
 class LobbyEditError(LfgError):
     pass

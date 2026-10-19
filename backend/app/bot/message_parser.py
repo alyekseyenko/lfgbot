@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.services.party_code import (
+    DEFAULT_PARTY_CODE_MAX_LENGTH,
+    clamp_party_code_max_length,
+)
 from app.services.ranks import extract_rank_bounds_from_text
 
-# Códigos Valorant: 6 caracteres, pelo menos um dígito.
-PARTY_CODE_PATTERN = re.compile(r"\b([A-Z0-9]{6})\b")
 PLUS_SLOTS_PATTERN = re.compile(r"\+\s*([1-4])\b", re.IGNORECASE)
 SOLO_PATTERN = re.compile(r"\bsolo\b", re.IGNORECASE)
 DUO_PATTERN = re.compile(r"\bduo\b", re.IGNORECASE)
@@ -20,11 +22,17 @@ class ParsedLfgMessage:
     max_rank: str | None
 
 
-def _pick_party_code(text: str) -> str | None:
+def _party_code_pattern(max_length: int) -> re.Pattern[str]:
+    length = clamp_party_code_max_length(max_length)
+    return re.compile(rf"\b([A-Z0-9]{{{length}}})\b")
+
+
+def _pick_party_code(text: str, max_length: int) -> str | None:
     upper = text.upper()
+    pattern = _party_code_pattern(max_length)
     candidates = [
         match.group(1)
-        for match in PARTY_CODE_PATTERN.finditer(upper)
+        for match in pattern.finditer(upper)
         if any(ch.isdigit() for ch in match.group(1))
     ]
     if not candidates:
@@ -43,13 +51,17 @@ def _pick_slots(text: str) -> int | None:
     return None
 
 
-def parse_lfg_message(content: str) -> ParsedLfgMessage | None:
+def parse_lfg_message(
+    content: str,
+    *,
+    party_code_max_length: int = DEFAULT_PARTY_CODE_MAX_LENGTH,
+) -> ParsedLfgMessage | None:
     text = content.strip()
     if len(text) < 3:
         return None
 
     slots = _pick_slots(text)
-    party_code = _pick_party_code(text)
+    party_code = _pick_party_code(text, party_code_max_length)
     if slots is None and party_code is None:
         return None
     if slots is None:

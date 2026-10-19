@@ -843,6 +843,20 @@ textarea.embed-text-card__input {
   background: #12151c;
 }
 
+.embed-visibility-grid {
+  display: grid;
+  gap: 0.35rem 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  margin-top: 0.75rem;
+}
+
+.embed-visibility-grid .checkbox-row {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: #12151c;
+  border: 1px solid #2a3140;
+}
+
 .config-nav {
   display: flex;
   flex-wrap: wrap;

@@ -32,6 +32,7 @@ from app.services.lobby_patch import UNSET, LobbyHostPatch
 from app.services.lobby_post_style import POST_STYLE_INTERACTIVE, normalize_post_style
 from app.services.lobby_source import LOBBY_SOURCE_UNKNOWN, normalize_lobby_source
 from app.services.party_code import (
+    DEFAULT_PARTY_CODE_MAX_LENGTH,
     assert_party_code_available_for_guild,
     normalize_party_code,
 )
@@ -116,6 +117,7 @@ async def create_lobby(
     discord_guild_id: int | None = None,
     create_source: str = LOBBY_SOURCE_UNKNOWN,
     post_style: str = POST_STYLE_INTERACTIVE,
+    party_code_max_length: int = DEFAULT_PARTY_CODE_MAX_LENGTH,
 ) -> Lobby:
     if slots < 1 or slots > 4:
         raise ValueError("slots must be between 1 and 4")
@@ -129,13 +131,16 @@ async def create_lobby(
     assert_can_search(host_row, now)
     assert_can_host_create(host_row, now)
 
-    normalized_code = normalize_party_code(party_code)
+    normalized_code = normalize_party_code(
+        party_code, max_length=party_code_max_length
+    )
     if discord_guild_id is not None:
         await assert_party_code_available_for_guild(
             session,
             discord_guild_id=discord_guild_id,
             party_code=normalized_code,
             now=now,
+            party_code_max_length=party_code_max_length,
         )
 
     lobby = Lobby(
@@ -369,6 +374,7 @@ async def update_lobby_as_host(
     lobby_id: UUID,
     host_id: int,
     patch: LobbyHostPatch,
+    party_code_max_length: int = DEFAULT_PARTY_CODE_MAX_LENGTH,
 ) -> Lobby:
     if patch.is_empty():
         raise LobbyEditError("Indica pelo menos um campo para alterar.")
@@ -406,7 +412,10 @@ async def update_lobby_as_host(
         lobby.max_rank = cast(str | None, patch.max_rank)
     if patch.party_code is not UNSET:
         now = datetime.now(UTC)
-        normalized_code = normalize_party_code(cast(str | None, patch.party_code))
+        normalized_code = normalize_party_code(
+            cast(str | None, patch.party_code),
+            max_length=party_code_max_length,
+        )
         if lobby.discord_guild_id is not None:
             await assert_party_code_available_for_guild(
                 session,
@@ -414,6 +423,7 @@ async def update_lobby_as_host(
                 party_code=normalized_code,
                 now=now,
                 exclude_lobby_id=lobby.id,
+                party_code_max_length=party_code_max_length,
             )
         lobby.party_code = normalized_code
     if patch.party_code_public is not UNSET:
@@ -492,6 +502,26 @@ async def expire_due_lobbies(
     return expired
 
 
+async def get_active_lobby_by_message(
+    session: AsyncSession,
+    *,
+    channel_id: int,
+    message_id: int,
+) -> Lobby | None:
+    result = await session.execute(
+        select(Lobby)
+        .where(
+            Lobby.channel_id == channel_id,
+            Lobby.message_id == message_id,
+            Lobby.state.in_((LobbyState.open, LobbyState.full)),
+        )
+        .options(
+            selectinload(Lobby.host), selectinload(Lobby.members).selectinload(LobbyMember.user)
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_lobby_detail(session: AsyncSession, lobby_id: UUID) -> Lobby:
     result = await session.execute(
         select(Lobby)
@@ -511,17 +541,26 @@ async def get_host_active_lobby(
     session: AsyncSession,
     host_id: int,
     now: datetime | None = None,
+    *,
+    include_past_ttl: bool = False,
 ) -> Lobby | None:
-    """Lobby aberto/cheio do host que ainda não expirou (hora em expires_at)."""
+    """Lobby aberto/cheio do host.
+
+    Por omissão ignora pedidos cujo TTL já passou (hora em expires_at).
+    Com include_past_ttl=True devolve o pedido ainda open/full para o host
+    poder /fechar mesmo que o job de expiração ainda não tenha corrido.
+    """
     if now is None:
         now = datetime.now(UTC)
+    filters = [
+        Lobby.host_id == host_id,
+        Lobby.state.in_((LobbyState.open, LobbyState.full)),
+    ]
+    if not include_past_ttl:
+        filters.append(Lobby.expires_at > now)
     result = await session.execute(
         select(Lobby)
-        .where(
-            Lobby.host_id == host_id,
-            Lobby.state.in_((LobbyState.open, LobbyState.full)),
-            Lobby.expires_at > now,
-        )
+        .where(*filters)
         .order_by(Lobby.created_at.desc())
         .limit(1)
     )

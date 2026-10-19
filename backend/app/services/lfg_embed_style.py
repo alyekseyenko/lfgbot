@@ -48,6 +48,7 @@ LFG_EMBED_TEXT_LIMITS: dict[str, int] = {
     "lobby_empty_players": 1024,
     "lobby_private_code_hint": 1024,
     "author_prefix": 32,
+    "host_line_prefix": 64,
     "footer_suffix": 128,
     "field_slots": 256,
     "field_expires": 256,
@@ -64,6 +65,7 @@ SIMPLE_EMBED_TEXT_KEYS: frozenset[str] = frozenset(
         "lobby_inactive_lead",
         "lobby_simple_hint",
         "author_prefix",
+        "host_line_prefix",
         "footer_suffix",
         "field_slots",
         "field_expires",
@@ -79,6 +81,7 @@ DEFAULT_LOBBY_INACTIVE_LEAD = "**Este grupo já não está ativo.**"
 DEFAULT_LOBBY_EMPTY_PLAYERS = "_Ninguém na lista — **Entrar** para te juntares._"
 DEFAULT_LOBBY_PRIVATE_CODE_HINT = "_Oculto — carrega em **Entrar** para receber o código._"
 DEFAULT_AUTHOR_PREFIX = "Host"
+DEFAULT_HOST_LINE_PREFIX = "Criado por"
 DEFAULT_FOOTER_SUFFIX = "· Expira à hora indicada (Lisboa)"
 
 
@@ -180,6 +183,8 @@ class LobbyEmbedStyle:
     immune_embed_color: str = DEFAULT_IMMUNE_EMBED_COLOR
     immune_embed_label: str = DEFAULT_IMMUNE_EMBED_LABEL
     immune_embed_tiers: tuple[ImmuneEmbedTier, ...] = ()
+    visibility: LobbyEmbedVisibility | None = None
+    panel_visibility: LfgEmbedPanelSettings | None = None
 
     def __post_init__(self) -> None:
         if self.color_source not in LFG_EMBED_COLOR_SOURCES:
@@ -212,6 +217,74 @@ def embed_custom_text(style: LobbyEmbedStyle | None, key: str, default: str) -> 
     return custom if custom else default
 
 
+def _embed_vis_bool(data: dict[str, object], key: str, default: bool) -> bool:
+    value = data.get(key)
+    return value if isinstance(value, bool) else default
+
+
+@dataclass(frozen=True, slots=True)
+class LfgEmbedPanelSettings:
+    show_title: bool = True
+    show_lead: bool = True
+    show_body: bool = True
+    show_cta: bool = True
+    show_guide: bool = True
+    show_footer: bool = True
+    show_thumbnail: bool = True
+    show_banner: bool = True
+
+
+def normalize_lfg_embed_panel(raw: Any) -> LfgEmbedPanelSettings:
+    data = raw if isinstance(raw, dict) else {}
+    return LfgEmbedPanelSettings(
+        show_title=_embed_vis_bool(data, "show_title", True),
+        show_lead=_embed_vis_bool(data, "show_lead", True),
+        show_body=_embed_vis_bool(data, "show_body", True),
+        show_cta=_embed_vis_bool(data, "show_cta", True),
+        show_guide=_embed_vis_bool(data, "show_guide", True),
+        show_footer=_embed_vis_bool(data, "show_footer", True),
+        show_thumbnail=_embed_vis_bool(data, "show_thumbnail", True),
+        show_banner=_embed_vis_bool(data, "show_banner", True),
+    )
+
+
+def lfg_embed_panel_to_storage(settings: LfgEmbedPanelSettings) -> dict[str, object]:
+    return {
+        "show_title": settings.show_title,
+        "show_lead": settings.show_lead,
+        "show_body": settings.show_body,
+        "show_cta": settings.show_cta,
+        "show_guide": settings.show_guide,
+        "show_footer": settings.show_footer,
+        "show_thumbnail": settings.show_thumbnail,
+        "show_banner": settings.show_banner,
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class LobbyEmbedVisibility:
+    """O que aparece no embed do pedido (simples ou detalhado)."""
+
+    show_title: bool = True
+    show_hint: bool = True
+    show_host_line: bool = True
+    host_as_mention: bool = False
+    show_party_code: bool = True
+    show_slots: bool = True
+    show_rank: bool = True
+    show_expires: bool = True
+    show_footer: bool = True
+    show_footer_rank_hint: bool = True
+    show_close_button: bool = True
+    show_edit_button: bool = True
+    show_cta: bool = True
+    show_code_visibility: bool = True
+    show_agents: bool = True
+    show_players: bool = True
+    show_banner_image: bool = True
+    show_host_rank_tags: bool = True
+
+
 @dataclass(frozen=True, slots=True)
 class LfgEmbedSimpleSettings:
     color_source: str = "min_rank"
@@ -225,6 +298,122 @@ class LfgEmbedSimpleSettings:
     show_timestamp: bool = False
     show_rank_thumbnail: bool = True
     lobby_thumbnail_url: str | None = None
+    show_title: bool = True
+    show_hint: bool = True
+    show_host_line: bool = True
+    host_as_mention: bool = False
+    show_party_code: bool = True
+    show_slots: bool = True
+    show_rank: bool = True
+    show_expires: bool = True
+    show_footer: bool = True
+    show_footer_rank_hint: bool = True
+    show_close_button: bool = True
+    show_edit_button: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class LfgEmbedDetailedSettings:
+    show_title: bool = True
+    show_host_line: bool = True
+    host_as_mention: bool = False
+    show_party_code: bool = True
+    show_slots: bool = True
+    show_rank: bool = True
+    show_expires: bool = True
+    show_footer: bool = True
+    show_footer_rank_hint: bool = True
+    show_cta: bool = True
+    show_code_visibility: bool = True
+    show_agents: bool = True
+    show_players: bool = True
+    show_banner_image: bool = True
+    show_host_rank_tags: bool = True
+
+
+def simple_settings_to_visibility(settings: LfgEmbedSimpleSettings) -> LobbyEmbedVisibility:
+    return LobbyEmbedVisibility(
+        show_title=settings.show_title,
+        show_hint=settings.show_hint,
+        show_host_line=settings.show_host_line,
+        host_as_mention=settings.host_as_mention,
+        show_party_code=settings.show_party_code,
+        show_slots=settings.show_slots,
+        show_rank=settings.show_rank,
+        show_expires=settings.show_expires,
+        show_footer=settings.show_footer,
+        show_footer_rank_hint=settings.show_footer_rank_hint,
+        show_close_button=settings.show_close_button,
+        show_edit_button=settings.show_edit_button,
+        show_cta=False,
+        show_code_visibility=False,
+        show_agents=False,
+        show_players=False,
+        show_banner_image=False,
+        show_host_rank_tags=False,
+    )
+
+
+def detailed_settings_to_visibility(settings: LfgEmbedDetailedSettings) -> LobbyEmbedVisibility:
+    return LobbyEmbedVisibility(
+        show_title=settings.show_title,
+        show_hint=False,
+        show_host_line=settings.show_host_line,
+        host_as_mention=settings.host_as_mention,
+        show_party_code=settings.show_party_code,
+        show_slots=settings.show_slots,
+        show_rank=settings.show_rank,
+        show_expires=settings.show_expires,
+        show_footer=settings.show_footer,
+        show_footer_rank_hint=settings.show_footer_rank_hint,
+        show_cta=settings.show_cta,
+        show_code_visibility=settings.show_code_visibility,
+        show_agents=settings.show_agents,
+        show_players=settings.show_players,
+        show_banner_image=settings.show_banner_image,
+        show_host_rank_tags=settings.show_host_rank_tags,
+    )
+
+
+def normalize_lfg_embed_detailed(raw: Any) -> LfgEmbedDetailedSettings:
+    data = raw if isinstance(raw, dict) else {}
+    return LfgEmbedDetailedSettings(
+        show_title=_embed_vis_bool(data, "show_title", True),
+        show_host_line=_embed_vis_bool(data, "show_host_line", True),
+        host_as_mention=_embed_vis_bool(data, "host_as_mention", False),
+        show_party_code=_embed_vis_bool(data, "show_party_code", True),
+        show_slots=_embed_vis_bool(data, "show_slots", True),
+        show_rank=_embed_vis_bool(data, "show_rank", True),
+        show_expires=_embed_vis_bool(data, "show_expires", True),
+        show_footer=_embed_vis_bool(data, "show_footer", True),
+        show_footer_rank_hint=_embed_vis_bool(data, "show_footer_rank_hint", True),
+        show_cta=_embed_vis_bool(data, "show_cta", True),
+        show_code_visibility=_embed_vis_bool(data, "show_code_visibility", True),
+        show_agents=_embed_vis_bool(data, "show_agents", True),
+        show_players=_embed_vis_bool(data, "show_players", True),
+        show_banner_image=_embed_vis_bool(data, "show_banner_image", True),
+        show_host_rank_tags=_embed_vis_bool(data, "show_host_rank_tags", True),
+    )
+
+
+def lfg_embed_detailed_to_storage(settings: LfgEmbedDetailedSettings) -> dict[str, object]:
+    return {
+        "show_title": settings.show_title,
+        "show_host_line": settings.show_host_line,
+        "host_as_mention": settings.host_as_mention,
+        "show_party_code": settings.show_party_code,
+        "show_slots": settings.show_slots,
+        "show_rank": settings.show_rank,
+        "show_expires": settings.show_expires,
+        "show_footer": settings.show_footer,
+        "show_footer_rank_hint": settings.show_footer_rank_hint,
+        "show_cta": settings.show_cta,
+        "show_code_visibility": settings.show_code_visibility,
+        "show_agents": settings.show_agents,
+        "show_players": settings.show_players,
+        "show_banner_image": settings.show_banner_image,
+        "show_host_rank_tags": settings.show_host_rank_tags,
+    }
 
 
 def normalize_lfg_embed_simple_custom_texts(raw: Any) -> dict[str, str]:
@@ -276,6 +465,18 @@ def normalize_lfg_embed_simple(raw: Any, *, fallback_footer_brand: str) -> LfgEm
         show_timestamp=bool(data.get("show_timestamp", False)),
         show_rank_thumbnail=bool(data.get("show_rank_thumbnail", True)),
         lobby_thumbnail_url=thumb,
+        show_title=_embed_vis_bool(data, "show_title", True),
+        show_hint=_embed_vis_bool(data, "show_hint", True),
+        show_host_line=_embed_vis_bool(data, "show_host_line", True),
+        host_as_mention=_embed_vis_bool(data, "host_as_mention", False),
+        show_party_code=_embed_vis_bool(data, "show_party_code", True),
+        show_slots=_embed_vis_bool(data, "show_slots", True),
+        show_rank=_embed_vis_bool(data, "show_rank", True),
+        show_expires=_embed_vis_bool(data, "show_expires", True),
+        show_footer=_embed_vis_bool(data, "show_footer", True),
+        show_footer_rank_hint=_embed_vis_bool(data, "show_footer_rank_hint", True),
+        show_close_button=_embed_vis_bool(data, "show_close_button", True),
+        show_edit_button=_embed_vis_bool(data, "show_edit_button", True),
     )
 
 
@@ -290,6 +491,18 @@ def lfg_embed_simple_to_storage(settings: LfgEmbedSimpleSettings) -> dict[str, o
         "show_timestamp": settings.show_timestamp,
         "show_rank_thumbnail": settings.show_rank_thumbnail,
         "custom_texts": dict(settings.custom_texts),
+        "show_title": settings.show_title,
+        "show_hint": settings.show_hint,
+        "show_host_line": settings.show_host_line,
+        "host_as_mention": settings.host_as_mention,
+        "show_party_code": settings.show_party_code,
+        "show_slots": settings.show_slots,
+        "show_rank": settings.show_rank,
+        "show_expires": settings.show_expires,
+        "show_footer": settings.show_footer,
+        "show_footer_rank_hint": settings.show_footer_rank_hint,
+        "show_close_button": settings.show_close_button,
+        "show_edit_button": settings.show_edit_button,
     }
     if settings.footer_brand:
         out["footer_brand"] = settings.footer_brand
@@ -334,6 +547,8 @@ def simple_lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmb
         immune_embed_color=config.immune_embed_color,
         immune_embed_label=config.immune_embed_label,
         immune_embed_tiers=config.immune_embed_tiers,
+        visibility=simple_settings_to_visibility(simple),
+        panel_visibility=config.lfg_embed_panel,
     )
 
 
@@ -347,7 +562,7 @@ def lobby_embed_style_for_post(
     return lobby_embed_style_from_config(config)
 
 
-def lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmbedStyle:
+def lobby_embed_style_from_config(config: "GuildRuntimeConfig") -> LobbyEmbedStyle:
     banner = (config.lfg_embed_banner_url or "").strip() or None
     brand = (config.lfg_embed_footer_brand or DEFAULT_FOOTER_BRAND).strip()[:64]
     return LobbyEmbedStyle(
@@ -385,6 +600,8 @@ def lobby_embed_style_from_config(config: GuildRuntimeConfig) -> LobbyEmbedStyle
         immune_embed_color=config.immune_embed_color,
         immune_embed_label=config.immune_embed_label,
         immune_embed_tiers=config.immune_embed_tiers,
+        visibility=detailed_settings_to_visibility(config.lfg_embed_detailed),
+        panel_visibility=config.lfg_embed_panel,
     )
 
 

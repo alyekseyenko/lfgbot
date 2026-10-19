@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 420" role="img" aria-label="LFG platform architecture">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1b26"/>
+      <stop offset="100%" style="stop-color:#0f1016"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="920" height="420" fill="url(#bg)" rx="12"/>
+  <text x="460" y="36" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="20" font-weight="600" text-anchor="middle">LFG Valorant  production architecture</text>
+  <text x="460" y="58" fill="#9aa0a6" font-family="Segoe UI, system-ui, sans-serif" font-size="12" text-anchor="middle">PostgreSQL = source of truth · Discord = presentation</text>
+
+  <!-- Discord -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="100" width="160" height="100" rx="10" fill="#5865F2"/>
+    <text x="120" y="135" fill="#fff" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="600" text-anchor="middle">Discord</text>
+    <text x="120" y="158" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11" text-anchor="middle">~13k members</text>
+    <text x="120" y="178" fill="#c5cae9" font-family="Segoe UI, system-ui, sans-serif" font-size="10" text-anchor="middle">slash · buttons · reactions</text>
+  </g>
+
+  <!-- Monolith app -->
+  <g filter="url(#shadow)">
+    <rect x="280" y="80" width="360" height="140" rx="10" fill="#2d333b" stroke="#FF4655" stroke-width="2"/>
+    <text x="460" y="108" fill="#FF4655" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="600" text-anchor="middle">Docker: app (monolith)</text>
+    <text x="320" y="132" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11">discord.py bot</text>
+    <text x="320" y="150" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11">FastAPI + OAuth admin</text>
+    <text x="320" y="168" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11">domain events · debounced embeds</text>
+    <text x="320" y="186" fill="#9aa0a6" font-family="Segoe UI, system-ui, sans-serif" font-size="10">jobs: expiry · reconcile · reputation</text>
+    <text x="560" y="132" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11">/metrics Prometheus</text>
+    <text x="560" y="150" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11">/health/ready</text>
+    <text x="560" y="168" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11">multi-guild tenant</text>
+  </g>
+
+  <!-- Postgres -->
+  <g filter="url(#shadow)">
+    <rect x="720" y="100" width="160" height="100" rx="10" fill="#336791"/>
+    <text x="800" y="135" fill="#fff" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="600" text-anchor="middle">PostgreSQL</text>
+    <text x="800" y="158" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="11" text-anchor="middle">lobbies · votes</text>
+    <text x="800" y="178" fill="#c5cae9" font-family="Segoe UI, system-ui, sans-serif" font-size="10" text-anchor="middle">Alembic migrations</text>
+  </g>
+
+  <!-- Admin -->
+  <g filter="url(#shadow)">
+    <rect x="280" y="260" width="200" height="80" rx="10" fill="#3c4043"/>
+    <text x="380" y="292" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600" text-anchor="middle">React admin SPA</text>
+    <text x="380" y="314" fill="#9aa0a6" font-family="Segoe UI, system-ui, sans-serif" font-size="10" text-anchor="middle">channels · embeds · reputation</text>
+  </g>
+
+  <!-- Observability -->
+  <g filter="url(#shadow)">
+    <rect x="520" y="260" width="200" height="80" rx="10" fill="#3c4043"/>
+    <text x="620" y="292" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600" text-anchor="middle">Grafana / Prometheus</text>
+    <text x="620" y="314" fill="#9aa0a6" font-family="Segoe UI, system-ui, sans-serif" font-size="10" text-anchor="middle">SLOs · alerts (optional)</text>
+  </g>
+
+  <!-- Arrows -->
+  <path d="M200 150 L275 150" stroke="#9aa0a6" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M645 150 L715 150" stroke="#9aa0a6" stroke-width="2" fill="none"/>
+  <path d="M460 220 L380 255" stroke="#9aa0a6" stroke-width="2" fill="none"/>
+  <path d="M520 300 L640 170" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
+  <polygon points="270,146 275,150 270,154" fill="#9aa0a6"/>
+  <polygon points="710,146 715,150 710,154" fill="#9aa0a6"/>
+</svg>

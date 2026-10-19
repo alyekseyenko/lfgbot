@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="LFG Valorant GitHub preview">
+  <rect width="1280" height="640" fill="#0f1016"/>
+  <rect x="0" y="0" width="1280" height="8" fill="#FF4655"/>
+  <text x="80" y="200" fill="#FF4655" font-family="Segoe UI, system-ui, sans-serif" font-size="56" font-weight="700">LFG Valorant</text>
+  <text x="80" y="270" fill="#e8eaed" font-family="Segoe UI, system-ui, sans-serif" font-size="32">Discord LFG platform · PostgreSQL · FastAPI · React admin</text>
+  <text x="80" y="330" fill="#9aa0a6" font-family="Segoe UI, system-ui, sans-serif" font-size="22">~13k community · 384k+ lifetime group requests · production on VPS</text>
+  <rect x="80" y="400" width="220" height="48" rx="6" fill="#5865F2"/>
+  <text x="190" y="430" fill="#fff" font-family="Segoe UI, system-ui, sans-serif" font-size="18" font-weight="600" text-anchor="middle">Open source</text>
+  <text x="80" y="520" fill="#6b7280" font-family="Segoe UI, system-ui, sans-serif" font-size="16">github.com/alyekseyenko/lfgbot</text>
+</svg>

@@ -70,6 +70,7 @@ Profile Docker opcional: `docker compose --profile observability up` (Prometheus
 
 - **Uma instância** do bot por token Discord; event bus em memória (at-most-once entre commit e listeners).
 - **Rate limits** Discord: debounce de embeds (`EMBED_DEBOUNCE_SECONDS`).
+- **Reconciliação periódica:** job `embed_reconciliation_loop` refresca lobbies activos a cada `RECONCILE_POLL_SECONDS` (ver [ADR 007](adr/007-periodic-embed-reconciliation.md)).
 - **Próximo passo multi-instância:** outbox na BD ou Redis pub/sub, shard de gateway, fila de edições — só quando houver mais de um processo ou &gt; ~1 edição/s sustentada por guild.
 
 Ver ADRs em [docs/adr/](adr/).

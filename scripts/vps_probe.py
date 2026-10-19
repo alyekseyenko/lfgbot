@@ -1,30 +1,13 @@
-"""One-off VPS probe; password only via VPS_SSH_PASSWORD env. Do not commit secrets."""
+"""VPS resource probe. Password only via VPS_SSH_PASSWORD; host via VPS_HOST."""
 from __future__ import annotations
 
-import os
 import sys
 
-import paramiko
-
-HOST = os.environ.get("VPS_HOST", "167.233.121.62")
-USER = os.environ.get("VPS_USER", "root")
-PASSWORD = os.environ.get("VPS_SSH_PASSWORD", "")
+from vps_common import connect_vps
 
 
 def main() -> int:
-    if not PASSWORD:
-        print("Set VPS_SSH_PASSWORD", file=sys.stderr)
-        return 1
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(
-        HOST,
-        username=USER,
-        password=PASSWORD,
-        timeout=25,
-        allow_agent=False,
-        look_for_keys=False,
-    )
+    client = connect_vps()
     cmds = [
         "echo '=== HOST ===' && hostname && uname -a",
         "echo '=== DISK ===' && df -h",

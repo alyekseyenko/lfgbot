@@ -2,48 +2,91 @@
 
 ![CI](https://github.com/alyekseyenko/lfgbot/actions/workflows/ci.yml/badge.svg)
 
-Open-source Discord bot for **looking-for-group (LFG)** in a Portuguese Valorant community. It replaces years of manual `CODE +2` chat posts with **structured requests** (embeds, buttons, PostgreSQL as source of truth).
+Open-source **looking-for-group (LFG)** platform for a Portuguese Valorant Discord (~**13,000** members). It replaces years of manual `CODE +2` chat with **structured requests** (embeds, buttons, **PostgreSQL as source of truth**), a **staff admin dashboard**, and **observability** (Prometheus metrics, SLOs, runbooks).
 
-Repository: **https://github.com/alyekseyenko/lfgbot**
-
-Architecture and roadmap (Portuguese): [docs/PROJETO.md](docs/PROJETO.md). English deploy guides: [docs/DEPLOY_HETZNER.md](docs/DEPLOY_HETZNER.md), [docs/DEPLOY_VPS_TEST.md](docs/DEPLOY_VPS_TEST.md).
-
-**User-facing bot text is European Portuguese** (community language). This README and ops docs are in English.
-
----
-
-## Community scale (since 2023)
-
-The server has used dedicated LFG channels since **2023** (~3–4 years of daily manual posts before this bot). Today the Discord has on the order of **~13,000 members**.
-
-Production metrics combine **historical channel activity** (configured once in guild settings) with **live data** recorded by the bot after rollout:
-
-| Metric | Lifetime total (approx.) | Meaning |
-|--------|-------------------------|---------|
-| **Group requests** | **384,931+** | Times someone looked for a team (legacy channel posts + bot `lobbies` since deploy). |
-| **Joins** | **1,154,793+** | Times players joined a request (**Entrar** / lobby members); legacy estimate ≈ 3× requests. |
-| **Players** | **8,200+** | Distinct people who used LFG (legacy estimate + Discord IDs stored by the bot). |
-
-The `+` counts **bot-tracked** activity on top of the legacy baseline. Staff can tune baselines in the web admin (**Histórico antes do bot**); `/lfg-stats` and the dashboard show **period** stats (e.g. last 30 days) separately.
+**Repository:** https://github.com/alyekseyenko/lfgbot
 
 | | |
 |--|--|
-| **Bot in production** | 2025–2026 (Docker on VPS; monolith bot + API + admin). |
-| **Open source** | This repository — self-host or adapt for your guild. |
+| **In-game / bot UI (players)** | European Portuguese |
+| **This README & ops docs** | English |
+| **Product spec (Portuguese)** | [docs/PROJETO.md](docs/PROJETO.md) |
+
+<p align="center">
+  <img src="docs/images/metrics-overview.svg" alt="Impact and engineering metrics overview" width="880"/>
+</p>
 
 ---
 
-## Before and after
+## Impact (community scale)
+
+Dedicated LFG channels since **2023** (~3–4 years of daily manual posts before this bot). Totals combine **documented legacy activity** (configured in the web admin) with **live counters** from the bot after rollout.
+
+| Metric | Lifetime total | What it means |
+|--------|----------------|---------------|
+| **Group requests** | **384,931+** | Someone looked for a team (legacy channel estimate + `lobbies` rows since deploy). |
+| **Join actions** | **1,154,793+** | Players joining a request (Join button / lobby members); legacy ≈ 3× requests. |
+| **LFG players** | **8,200+** | Distinct people who used LFG (legacy estimate + Discord IDs in DB). |
+| **Server size** | **~13,000** | Members in the target community. |
+
+The **`+`** is bot-tracked activity **on top of** the legacy baseline. Staff can tune baselines in the admin (**Legacy stats before bot**). `/lfg-stats` and the dashboard show **period** stats (e.g. last 30 days) separately.
+
+| | |
+|--|--|
+| **In production** | 2025–2026 — Docker on VPS (monolith: bot + API + admin SPA). |
+| **Open source** | Self-host or adapt for your guild. |
+
+---
+
+## Engineering highlights
+
+| Area | What we built |
+|------|----------------|
+| **Reliability** | DB is truth; embeds reconciled on startup + periodic job ([ADR 007](docs/adr/007-periodic-embed-reconciliation.md)). |
+| **Latency SLO** | Target **p99 &lt; 2 s** for first ack on LFG buttons (`lfg_interaction_latency_seconds`). |
+| **Rate limits** | Embed **debounce** (~2 s) so join/leave spikes do not hit Discord 429 ([ADR 004](docs/adr/004-embed-debounce.md)). |
+| **Multi-tenant** | One process, many guilds via `discord_guild_id` + cached config ([ADR 006](docs/adr/006-multi-guild-config-cache.md)). |
+| **Quality** | **170+** pytest cases, mypy/ruff in CI, **7** architecture decision records. |
+| **Ops** | [RUNBOOK](docs/RUNBOOK.md), [SECURITY](docs/SECURITY.md), [SLO](docs/SLO.md), Grafana/Prometheus under `deploy/observability/`. |
+
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="System architecture diagram" width="920"/>
+</p>
+
+---
+
+## Before and after (screenshots)
+
+### Before — manual LFG chat
+
+<p align="center">
+  <img src="docs/images/old/old1.jpg" alt="Manual LFG messages in Discord channel" width="720"/>
+  <br/>
+  <img src="docs/images/old/old2.jpg" alt="More manual LFG chat examples" width="720"/>
+  <br/>
+  <img src="docs/images/old/old3.jpg" alt="Manual party codes and rank tags in chat" width="720"/>
+</p>
+
+### After — bot (embeds, states, commands)
+
+| Flow | Screenshot |
+|------|------------|
+| Simple party created | <img src="docs/images/new/simple-party-created.jpg" alt="Simple LFG embed after creation" width="560"/> |
+| Party closed after TTL | <img src="docs/images/new/after-ttl-party-closed.jpg" alt="Closed party after TTL" width="560"/> |
+| Complete party | <img src="docs/images/new/complete-party-created.jpg" alt="Complete party embed" width="560"/> |
+| Slash commands | <img src="docs/images/new/lfg-commands-list.jpg" alt="LFG slash command list" width="560"/> |
+| `/perfil` | <img src="docs/images/new/profile-command.jpg" alt="Profile command output" width="560"/> |
+| `/ranking` | <img src="docs/images/new/ranking-command.jpg" alt="Ranking command — parties created" width="560"/> |
+| `/reputacao` | <img src="docs/images/new/reputation-commands.jpg" alt="Reputation leaderboard and voting" width="560"/> |
 
 | Before (manual chat) | After (LFG bot) |
 |----------------------|-----------------|
-| Stacked `ZOV825 +2 @GOLD` messages | Structured embeds: party code, slots, ranks, host |
-| No shared state | PostgreSQL is source of truth; Discord is the UI |
-| Stale requests mixed with active ones | **Open** / **Full** / **Closed** / **Expired** with auto-expiry |
+| Stacked `CODE +2 @RANK` messages | Structured embeds: party code, slots, ranks, host |
+| No shared state | PostgreSQL; Discord is presentation only |
+| Stale requests in the feed | **Open** / **Full** / **Closed** / **Expired** + auto-expiry |
+| No reputation or creator metrics | Reputation LFG (votes), creator levels, `/ranking`, `/reputacao` |
 
-**Post styles:** **Simple** (default) — code in-channel, join in-game, host-only **Close** button. **Detailed** — **Join** / **Leave** list on Discord (legacy flow).
-
-Screenshots: [docs/images/](docs/images/).
+Source files live in `Images/` locally (gitignored); committed copies are under [docs/images/](docs/images/).
 
 ---
 
@@ -51,29 +94,28 @@ Screenshots: [docs/images/](docs/images/).
 
 ### Creating requests
 
-- **`/procurar`** — defaults to **simple** (`slots` + `party code`). Use `type: Detailed` for Join/Leave on Discord (rank range, agents, public/private code, verified ranks).
-- **«Criar grupo» panel** — **Simple** (recommended) or **Detailed**; sticky message + button (`/lfg-painel` to republish).
-- **Guide channel** — short PT embed for members (editable in admin → General; `/lfg-guia` to publish).
+- **`/procurar`** — defaults to **simple** (slots + party code). Use `type: Detailed` for Join/Leave on Discord.
+- **Create-group panel** — Simple or Detailed; sticky panel + `/lfg-painel` to republish.
+- **Guide channel** — member onboarding embed (`/lfg-guia`, editable in admin).
 
 ### Simple vs detailed embeds
 
 | | **Simple** | **Detailed** |
 |--|------------|--------------|
 | Discord buttons | Host **Close** only | **Join** / **Leave** (+ host tools) |
-| Party code | Shown in the channel embed | Public in embed or **DM after Join** if private |
-| Ranks | Optional min/max on the embed (informational) | Enforced via mapped Discord rank roles |
-| VIP / priority roles | Highlight styling (title/color/thumbnail) when enabled | Same tier styling when enabled |
-| Host in embed | Display name (not a broken `@mention` in embed body) | Same |
-| Footer accent | Mapped Valorant rank role icon, or “unverified rank” copy | Full member list + standard footer rules |
+| Party code | In-channel embed | Public or **DM after Join** if private |
+| Ranks | Optional min/max (informational) | Enforced via mapped Discord rank roles |
+| VIP / priority | Tier styling when enabled | Same |
 
-### Ops and community
+### Community & staff
 
-- **Auto-format** (optional) — `ABC123 +2` chat → embeds; many guilds use panel/slash only.
-- **Persistent views** — buttons survive bot restarts (`custom_id`).
-- **Commands** — `/fechar`, `/editar`, `/perfil`, `/ranking`, `/lfg-stats`, `/lfg-apagar-dados` (GDPR).
-- **Moderation** — leave cooldowns on **private** parties (voluntary leave only); **host recreate delay** after close (~5 min default, seconds for configured priority roles — role is read **at close time**); audit log channel.
+- **Commands** — `/fechar`, `/editar`, `/perfil`, `/ranking`, `/reputacao`, `/lfg-stats`, `/lfg-apagar-dados` (GDPR).  
+  `/perfil`, `/ranking`, and `/reputacao` work in **any channel** in the server.
+- **Reputation LFG** — delayed posts in a dedicated channel; max 4 voters per post; paginated leaderboards; optional **roles** by score; staff **`/reputacao-ajustar`**.
+- **Creator levels** — parties created, Discord roles, weekly top creators.
+- **Moderation** — private-party leave cooldowns, host recreate delay, audit log channel.
 - Optional **gamification** — completions, weekly leaderboard.
-- **Web admin** (`/admin`, OAuth) — channels, embed styling (simple + detailed), moderation tiers, **Valorant rank/agent catalog** sync, role mappings, metrics, player-facing site (`/`, `/me`).
+- **Web admin** (`/admin`, OAuth) — channels, embed styling, reputation thresholds, Valorant rank/agent catalog, metrics, public profile site.
 
 ---
 
@@ -93,7 +135,7 @@ Screenshots: [docs/images/](docs/images/).
 
 ```bash
 cp .env.example .env
-# Fill DISCORD_TOKEN, DISCORD_GUILD_IDS, LFG_CHANNEL_IDS
+# DISCORD_TOKEN, DISCORD_GUILD_IDS, LFG_CHANNEL_IDS
 docker compose up --build
 ```
 
@@ -114,10 +156,25 @@ docker compose exec app pytest -q
 
 ---
 
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components & flows |
+| [CASE_STUDY.md](docs/CASE_STUDY.md) | Problem, decisions, metrics (CV / interviews) |
+| [RUNBOOK.md](docs/RUNBOOK.md) | Incidents & operations |
+| [SECURITY.md](docs/SECURITY.md) | Secrets & GDPR |
+| [DEPLOY_HETZNER.md](docs/DEPLOY_HETZNER.md) | Dedicated VPS |
+| [DEPLOY_VPS_TEST.md](docs/DEPLOY_VPS_TEST.md) | Shared VPS (API on localhost) |
+
+**GitHub social preview (optional):** [docs/images/github-social-preview.svg](docs/images/github-social-preview.svg) → repository **Settings → Social preview**.
+
+---
+
 ## Deploy 24/7
 
 - Dedicated VPS: [docs/DEPLOY_HETZNER.md](docs/DEPLOY_HETZNER.md) (`docker-compose.prod.yml`).
-- **Shared VPS** (nginx already on 80/443): [docs/DEPLOY_VPS_TEST.md](docs/DEPLOY_VPS_TEST.md) (`docker-compose.vps-test.yml`, API on `127.0.0.1:8010`).
+- Shared VPS: [docs/DEPLOY_VPS_TEST.md](docs/DEPLOY_VPS_TEST.md) (`docker-compose.vps-test.yml`).
 
 **One Discord token = one running instance.** Stop local `app` before starting on the VPS.
 

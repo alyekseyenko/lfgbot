@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   api,
+  CreatorLevel,
   DiscordChannel,
   DiscordRole,
   Guild,
@@ -33,7 +34,17 @@ import {
   type EmbedPedidosMode,
   type EmbedPedidosTab,
   type EmbedTab,
+  type LfgEmbedDetailedSettings,
+  type LfgEmbedPanelSettings,
   type LfgEmbedSimpleSettings,
+  EMBED_VISIBILITY_DETAILED,
+  EMBED_VISIBILITY_PANEL,
+  EMBED_VISIBILITY_SIMPLE,
+  DEFAULT_LFG_EMBED_DETAILED_VISIBILITY,
+  DEFAULT_LFG_EMBED_PANEL_VISIBILITY,
+  LFG_EMBED_PANEL_MINIMAL,
+  DEFAULT_LFG_EMBED_SIMPLE_VISIBILITY,
+  LFG_EMBED_SIMPLE_MINIMAL,
 } from "./embedAdminConfig";
 import { EmbedTextFieldRow } from "./components/EmbedTextFieldRow";
 
@@ -130,6 +141,8 @@ export function AdminApp() {
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [catalogAgents, setCatalogAgents] = useState<ValorantAgent[]>([]);
   const [agentValorantRoles, setAgentValorantRoles] = useState<Record<string, string>>({});
+  const [creatorLevels, setCreatorLevels] = useState<CreatorLevel[]>([]);
+  const creatorLevelsReady = useRef(false);
   const [catalogMeta, setCatalogMeta] = useState<string | null>(null);
   const [catalogSyncing, setCatalogSyncing] = useState(false);
 
@@ -139,8 +152,22 @@ export function AdminApp() {
   const [guildReloadToken, setGuildReloadToken] = useState(0);
   const [adminSection, setAdminSection] = useState<AdminSection>("geral");
   const [embedTab, setEmbedTab] = useState<EmbedTab>("painel");
-  const [embedPedidosTab, setEmbedPedidosTab] = useState<EmbedPedidosTab>("cores");
+  const [embedPedidosTab, setEmbedPedidosTab] = useState<EmbedPedidosTab>("visibilidade");
   const [embedPedidosMode, setEmbedPedidosMode] = useState<EmbedPedidosMode>("simples");
+
+  const openEmbedPedidosVisibilidade = () => {
+    setAdminSection("embeds");
+    setEmbedTab("pedidos");
+    setEmbedPedidosTab("visibilidade");
+    setEmbedPedidosMode("simples");
+  };
+
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#/, "").toLowerCase();
+    if (hash === "embeds-visibilidade" || hash === "embeds") {
+      openEmbedPedidosVisibilidade();
+    }
+  }, []);
 
   const selected = useMemo(
     () =>
@@ -242,12 +269,13 @@ export function AdminApp() {
         if (generation !== guildLoadGen.current) return;
         setSettings(normalizeGuildSettings(s));
 
-        const [chRes, rlRes, mpRes, stRes, arRes] = await Promise.allSettled([
+        const [chRes, rlRes, mpRes, stRes, arRes, lvRes] = await Promise.allSettled([
           api.channels(selectedGuild),
           api.roles(selectedGuild),
           api.roleMappings(selectedGuild),
           api.stats(selectedGuild),
           api.valorantAgentRoles(selectedGuild),
+          api.creatorLevels(selectedGuild),
         ]);
         if (generation !== guildLoadGen.current) return;
 
@@ -282,6 +310,13 @@ export function AdminApp() {
             map[row.agent_uuid] = row.discord_role_id;
           }
           setAgentValorantRoles(map);
+        }
+        if (lvRes.status === "fulfilled") {
+          setCreatorLevels(lvRes.value);
+          creatorLevelsReady.current = true;
+        } else {
+          setCreatorLevels([]);
+          creatorLevelsReady.current = false;
         }
 
         if (partialErrors.length > 0) {
@@ -322,6 +357,18 @@ export function AdminApp() {
       };
     }
     patchSettings({ lfg_embed_simple: next });
+  };
+
+  const patchPedidosDetailed = (patch: Partial<LfgEmbedDetailedSettings>) => {
+    if (!settings) return;
+    const current = settings.lfg_embed_detailed ?? {};
+    patchSettings({ lfg_embed_detailed: { ...current, ...patch } });
+  };
+
+  const patchPanelVisibility = (patch: Partial<LfgEmbedPanelSettings>) => {
+    if (!settings) return;
+    const current = settings.lfg_embed_panel ?? {};
+    patchSettings({ lfg_embed_panel: { ...current, ...patch } });
   };
 
   const pedidosCustomTexts = (): Record<string, string> => {
@@ -461,6 +508,10 @@ export function AdminApp() {
         }
       }
       await api.putValorantAgentRoles(selectedGuild, valorantMappings);
+      if (creatorLevelsReady.current) {
+        const savedLevels = await api.putCreatorLevels(selectedGuild, creatorLevels);
+        setCreatorLevels(savedLevels);
+      }
       setStats(await api.stats(selectedGuild));
       showSaveSuccess("Configuração guardada com sucesso.");
     } catch (err) {
@@ -627,7 +678,12 @@ export function AdminApp() {
                 key={section.id}
                 type="button"
                 className={adminSection === section.id ? "active" : undefined}
-                onClick={() => setAdminSection(section.id)}
+                onClick={() => {
+                  setAdminSection(section.id);
+                  if (section.id === "embeds") {
+                    openEmbedPedidosVisibilidade();
+                  }
+                }}
               >
                 <span className="admin-side-nav__label">{section.label}</span>
                 <span className="admin-side-nav__hint">{section.hint}</span>
@@ -716,6 +772,21 @@ export function AdminApp() {
                 />
               </label>
               <label className="field-stack">
+                Código party (caracteres)
+                <input
+                  type="number"
+                  min={4}
+                  max={12}
+                  value={settings.party_code_max_length ?? 6}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    patchSettings({
+                      party_code_max_length: Math.min(12, Math.max(4, n || 6)),
+                    });
+                  }}
+                />
+              </label>
+              <label className="field-stack">
                 Canal de ranking
                 <select
                   value={settings.stats_channel_id || ""}
@@ -733,9 +804,15 @@ export function AdminApp() {
               </label>
             </div>
             <p className="hint">
-              Com um canal de ranking escolhido, o <code>/ranking</code> funciona aí e o
-              ranking automático (se a gamificação estiver ativa) publica só nesse canal.
-              «Todos os LFG» = ranking em qualquer canal LFG.
+              O tamanho do <strong>código da party</strong> aplica-se a criar/editar pedidos e ao
+              formato automático de mensagens (por defeito <strong>6</strong>, como no Valorant).
+            </p>
+            <p className="hint">
+              O <code>/ranking</code> lista <strong>grupos criados</strong> (histórico, 10 por
+              página — parâmetro <code>pagina</code>). O <code>/reputacao</code> mostra a{" "}
+              <strong>reputação LFG</strong> (só se o canal estiver configurado abaixo). Os
+              nomes dos comandos são sem acentos. <code>/perfil</code>, <code>/ranking</code> e{" "}
+              <code>/reputacao</code> funcionam em <strong>qualquer canal</strong> do servidor.
             </p>
           </div>
 
@@ -762,9 +839,116 @@ export function AdminApp() {
               </select>
             </label>
             <p className="hint">
-              Eventos: pedidos criados/fechados/expirados, expulsões, RGPD e alterações
-              guardadas neste dashboard.
+              Eventos: pedidos criados/fechados/expirados, expulsões, RGPD, votos de
+              reputação e alterações guardadas neste dashboard.
             </p>
+          </div>
+
+          <div className="card highlight-card">
+            <h2>Reputação LFG</h2>
+            <p className="hint">
+              Após o tempo definido, o bot publica um pedido de voto (👍/👎) no canal
+              escolhido, com o <strong>código da party</strong> para identificar o pedido.
+              Só entram pedidos criados <strong>depois de activares</strong> o canal (não há
+              fila de histórico). Máximo <strong>4</strong> reações por pedido.
+            </p>
+            <div className="field-row">
+              <label className="field-stack">
+                Canal de reputação
+                <select
+                  value={settings.reputation_channel_id || "0"}
+                  onChange={(e) =>
+                    patchSettings({
+                      reputation_channel_id: e.target.value || "0",
+                    })
+                  }
+                >
+                  <option value="0">Desligado</option>
+                  {channels.map((ch) => (
+                    <option key={ch.id} value={ch.id}>
+                      #{ch.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-stack">
+                Minutos após criar o pedido
+                <input
+                  type="number"
+                  min={10}
+                  max={180}
+                  value={settings.reputation_delay_minutes ?? 50}
+                  onChange={(e) =>
+                    patchSettings({
+                      reputation_delay_minutes: Number(e.target.value) || 50,
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <p className="hint">
+              Roles automáticas pelo total de reputação (votos + ajustes staff). O bot precisa de
+              estar acima das roles e de permissão <strong>Gerir roles</strong>. Staff:{" "}
+              <code>/reputacao-ajustar</code> (pontos positivos ou negativos).
+            </p>
+            <div className="field-row">
+              <label className="field-stack">
+                Limite reputação negativa (pontos)
+                <input
+                  type="number"
+                  max={-1}
+                  min={-10000}
+                  value={settings.reputation_negative_threshold ?? -15}
+                  onChange={(e) =>
+                    patchSettings({
+                      reputation_negative_threshold: Number(e.target.value) || -15,
+                    })
+                  }
+                />
+              </label>
+              <label className="field-stack">
+                Role se ≤ limite
+                <RoleSearchSelect
+                  roles={roles}
+                  value={settings.reputation_negative_role_id || "0"}
+                  onChange={(roleId) =>
+                    patchSettings({
+                      reputation_negative_role_id: roleId || "0",
+                    })
+                  }
+                  placeholder="Desligado"
+                />
+              </label>
+            </div>
+            <div className="field-row">
+              <label className="field-stack">
+                Limite reputação positiva (pontos)
+                <input
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={settings.reputation_positive_threshold ?? 25}
+                  onChange={(e) =>
+                    patchSettings({
+                      reputation_positive_threshold: Number(e.target.value) || 25,
+                    })
+                  }
+                />
+              </label>
+              <label className="field-stack">
+                Role se ≥ limite
+                <RoleSearchSelect
+                  roles={roles}
+                  value={settings.reputation_positive_role_id || "0"}
+                  onChange={(roleId) =>
+                    patchSettings({
+                      reputation_positive_role_id: roleId || "0",
+                    })
+                  }
+                  placeholder="Desligado"
+                />
+              </label>
+            </div>
           </div>
 
           <div className="card highlight-card">
@@ -946,6 +1130,163 @@ export function AdminApp() {
           </>
           )}
 
+          {adminSection === "niveis" && (
+          <div className="card">
+            <h2>Níveis de criador de sala</h2>
+            <p className="hint">
+              O nível sobe com a <strong>quantidade de grupos criados</strong> (sem limite de
+              tempo). O bot atribui a role do nível actual e remove as outras roles desta tabela.
+              O bot tem de estar <strong>acima</strong> dessas roles e ter permissão{" "}
+              <strong>Gerir cargos</strong>. As notificações usam menções (<code>@utilizador</code>
+              ).
+            </p>
+            <div className="field-row">
+              <label className="field-stack">
+                Canal de notificações
+                <select
+                  value={settings.announce_channel_id ?? ""}
+                  onChange={(e) =>
+                    patchSettings({
+                      announce_channel_id: e.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">Desligado</option>
+                  {channels.map((ch) => (
+                    <option key={ch.id} value={ch.id}>
+                      #{ch.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-stack">
+                Início da semana (ranking)
+                <input
+                  type="date"
+                  value={settings.weekly_leaderboard_anchor ?? ""}
+                  onChange={(e) =>
+                    patchSettings({
+                      weekly_leaderboard_anchor: e.target.value || null,
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <p className="hint">
+              O ranking semanal de criadores publica no mesmo canal às <strong>21:00</strong> (hora
+              de Lisboa) no último dia de cada semana de 7 dias a partir da data âncora.
+            </p>
+            <table className="mapping-table">
+              <thead>
+                <tr>
+                  <th>Nível</th>
+                  <th>Nome</th>
+                  <th>Grupos mínimos</th>
+                  <th>Role</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {creatorLevels.map((row, index) => (
+                  <tr key={`${row.level_number}-${index}`}>
+                    <td>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={row.level_number}
+                        onChange={(e) => {
+                          const next = [...creatorLevels];
+                          next[index] = {
+                            ...row,
+                            level_number: Number(e.target.value) || 1,
+                          };
+                          setCreatorLevels(next);
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        maxLength={64}
+                        value={row.name}
+                        onChange={(e) => {
+                          const next = [...creatorLevels];
+                          next[index] = { ...row, name: e.target.value };
+                          setCreatorLevels(next);
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={0}
+                        value={row.min_rooms}
+                        onChange={(e) => {
+                          const next = [...creatorLevels];
+                          next[index] = {
+                            ...row,
+                            min_rooms: Number(e.target.value) || 0,
+                          };
+                          setCreatorLevels(next);
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <RoleSearchSelect
+                        roles={roles}
+                        value={row.discord_role_id ?? ""}
+                        onChange={(roleId) => {
+                          const next = [...creatorLevels];
+                          next[index] = {
+                            ...row,
+                            discord_role_id: roleId || null,
+                          };
+                          setCreatorLevels(next);
+                        }}
+                        placeholder="Nenhuma (estrutura)"
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() =>
+                          setCreatorLevels(creatorLevels.filter((_, i) => i !== index))
+                        }
+                      >
+                        Remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={creatorLevels.length >= 12}
+              onClick={() => {
+                const used = new Set(creatorLevels.map((l) => l.level_number));
+                let n = 1;
+                while (used.has(n)) n += 1;
+                const lastMin = creatorLevels[creatorLevels.length - 1]?.min_rooms ?? 0;
+                setCreatorLevels([
+                  ...creatorLevels,
+                  {
+                    level_number: n,
+                    name: `Nível ${n}`,
+                    min_rooms: lastMin + 10,
+                    discord_role_id: null,
+                  },
+                ]);
+              }}
+            >
+              Adicionar nível
+            </button>
+          </div>
+          )}
+
           {adminSection === "catalogo" && (
           <div className="card" id="catalogo">
             <h2>Catálogo Valorant (perfis)</h2>
@@ -1034,8 +1375,36 @@ export function AdminApp() {
             <>
             <p className="hint embed-text-intro">
               Mensagem permanente com o botão <strong>Criar grupo</strong>. Não confundir
-              com os pedidos que aparecem quando alguém publica.
+              com os pedidos que aparecem quando alguém publica. Desliga campos aqui
+              para o painel ficar mais curto; depois <strong>guarda</strong>.
             </p>
+            <h3>Visibilidade</h3>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => patchPanelVisibility(LFG_EMBED_PANEL_MINIMAL)}
+            >
+              Aplicar layout mínimo (só título + botão)
+            </button>
+            <div className="embed-visibility-grid">
+              {EMBED_VISIBILITY_PANEL.map((row) => {
+                const checked =
+                  settings.lfg_embed_panel?.[row.key] ??
+                  DEFAULT_LFG_EMBED_PANEL_VISIBILITY[row.key];
+                return (
+                  <label key={row.key} className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(checked)}
+                      onChange={(e) =>
+                        patchPanelVisibility({ [row.key]: e.target.checked })
+                      }
+                    />
+                    {row.label}
+                  </label>
+                );
+              })}
+            </div>
             <div className="embed-media-grid embed-panel-style">
               <label>
                 Cor da barra lateral
@@ -1139,6 +1508,11 @@ export function AdminApp() {
 
             {embedTab === "pedidos" && (
             <>
+            <p className="hint embed-text-intro">
+              Para <strong>reduzir spam</strong> no modo simples: aba{" "}
+              <strong>Visibilidade</strong> → <strong>Modo simples</strong> → botão{" "}
+              <strong>Aplicar layout mínimo</strong>. Guarda no fim da página.
+            </p>
             <nav className="embed-subnav" aria-label="Tipo de pedido LFG">
               {EMBED_PEDIDOS_MODE_TABS.map((tab) => (
                 <button
@@ -1164,6 +1538,89 @@ export function AdminApp() {
                 </button>
               ))}
             </nav>
+
+            <div className="card" style={{ marginBottom: "1rem" }}>
+              <h3>Quem pode publicar</h3>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={settings.lfg_post_style_simple_enabled ?? true}
+                  onChange={(e) =>
+                    patchSettings({ lfg_post_style_simple_enabled: e.target.checked })
+                  }
+                />
+                Permitir pedidos <strong>simples</strong> (painel «Criar grupo» e /procurar)
+              </label>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={settings.lfg_post_style_detailed_enabled ?? true}
+                  onChange={(e) =>
+                    patchSettings({ lfg_post_style_detailed_enabled: e.target.checked })
+                  }
+                />
+                Permitir pedidos <strong>detalhados</strong> (só /procurar, Entrar/Sair)
+              </label>
+            </div>
+
+            {embedPedidosTab === "visibilidade" && (
+            <>
+            <p className="hint">
+              Desliga o que não precisas para reduzir spam no canal. No simples podes
+              esconder os botões <strong>Fechar</strong> e <strong>Editar</strong> — os
+              comandos <code>/fechar</code> e <code>/editar</code> continuam sempre a
+              funcionar. Pedidos já publicados só mudam quando o embed é atualizado
+              (nova ação no lobby ou refresh do bot).
+            </p>
+            {embedPedidosMode === "simples" && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => patchPedidosSimple(LFG_EMBED_SIMPLE_MINIMAL)}
+              >
+                Aplicar layout mínimo (vagas, código, rank, @host)
+              </button>
+            )}
+            <div className="embed-visibility-grid">
+              {(embedPedidosMode === "simples"
+                ? EMBED_VISIBILITY_SIMPLE
+                : EMBED_VISIBILITY_DETAILED
+              ).map((row) => {
+                const simple = embedPedidosMode === "simples";
+                const checked = simple
+                  ? (settings.lfg_embed_simple?.[row.key as keyof LfgEmbedSimpleSettings] ??
+                    DEFAULT_LFG_EMBED_SIMPLE_VISIBILITY[
+                      row.key as keyof typeof DEFAULT_LFG_EMBED_SIMPLE_VISIBILITY
+                    ])
+                  : (settings.lfg_embed_detailed?.[row.key as keyof LfgEmbedDetailedSettings] ??
+                    DEFAULT_LFG_EMBED_DETAILED_VISIBILITY[
+                      row.key as keyof LfgEmbedDetailedSettings
+                    ]);
+                return (
+                  <label key={row.key} className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(checked)}
+                      onChange={(e) => {
+                        const value = e.target.checked;
+                        if (simple) {
+                          patchPedidosSimple({
+                            [row.key]: value,
+                          } as Partial<LfgEmbedSimpleSettings>);
+                        } else {
+                          patchPedidosDetailed({
+                            [row.key]: value,
+                          } as Partial<LfgEmbedDetailedSettings>);
+                        }
+                      }}
+                    />
+                    {row.label}
+                  </label>
+                );
+              })}
+            </div>
+            </>
+            )}
 
             {embedPedidosTab === "cores" && (
             <>

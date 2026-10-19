@@ -59,6 +59,10 @@ _EMBED_STYLE_KEYS = frozenset(
         "lfg_panel_decorative",
         "lfg_embed_thumbnail_url",
         "lfg_embed_simple",
+        "lfg_embed_detailed",
+        "lfg_embed_panel",
+        "lfg_post_style_simple_enabled",
+        "lfg_post_style_detailed_enabled",
     }
 )
 
@@ -103,6 +107,9 @@ def _values_equal(key: str, old: object, new: object) -> bool:
         "stats_channel_id",
         "log_channel_id",
         "announce_channel_id",
+        "reputation_channel_id",
+        "reputation_negative_role_id",
+        "reputation_positive_role_id",
         "guide_channel_id",
     ):
         return _channel_id_as_int(old) == _channel_id_as_int(new)
@@ -171,6 +178,40 @@ def build_dashboard_settings_audit(
     if "announce_channel_id" in keys:
         lines.append(f"• Anúncios: {_channel_ref(changed.get('announce_channel_id'))}")
 
+    if "reputation_channel_id" in keys:
+        lines.append(f"• Reputação: {_channel_ref(changed.get('reputation_channel_id'))}")
+
+    if "reputation_delay_minutes" in keys:
+        lines.append(
+            f"• Atraso reputação: **{int(changed['reputation_delay_minutes'])}** min"
+        )
+
+    if "reputation_negative_threshold" in keys:
+        lines.append(
+            f"• Reputação negativa: ≤ **{int(changed['reputation_negative_threshold'])}** pts"
+        )
+    if "reputation_negative_role_id" in keys:
+        rid = int(changed.get("reputation_negative_role_id") or 0)
+        lines.append(
+            f"• Role reputação negativa: {'Desligado' if rid <= 0 else f'<@&{rid}>'}"
+        )
+    if "reputation_positive_threshold" in keys:
+        lines.append(
+            f"• Reputação positiva: ≥ **{int(changed['reputation_positive_threshold'])}** pts"
+        )
+    if "reputation_positive_role_id" in keys:
+        rid = int(changed.get("reputation_positive_role_id") or 0)
+        lines.append(
+            f"• Role reputação positiva: {'Desligado' if rid <= 0 else f'<@&{rid}>'}"
+        )
+
+    if "weekly_leaderboard_anchor" in keys:
+        anchor = changed.get("weekly_leaderboard_anchor")
+        if anchor is None:
+            lines.append("• Início da semana (criadores): desligado")
+        else:
+            lines.append(f"• Início da semana (criadores): **{anchor}**")
+
     if "guide_channel_id" in keys:
         lines.append(f"• Canal do guia: {_channel_ref(changed.get('guide_channel_id'))}")
 
@@ -196,6 +237,11 @@ def build_dashboard_settings_audit(
 
     if "lobby_ttl_minutes" in keys:
         lines.append(f"• TTL dos pedidos: **{int(changed['lobby_ttl_minutes'])}** min")
+
+    if "party_code_max_length" in keys:
+        lines.append(
+            f"• Tamanho do código party: **{int(changed['party_code_max_length'])}** caracteres"
+        )
 
     if "default_lfg_mode" in keys:
         lines.append(f"• Modo padrão: **{changed['default_lfg_mode']}**")
@@ -247,7 +293,18 @@ def build_dashboard_settings_audit(
             lines.append("• Cooldown novo pedido: " + " / ".join(bits))
 
     known = (
-        {"lfg_channel_ids", "log_channel_id", "stats_channel_id", "announce_channel_id"}
+        {
+            "lfg_channel_ids",
+            "log_channel_id",
+            "stats_channel_id",
+            "announce_channel_id",
+            "reputation_channel_id",
+            "reputation_delay_minutes",
+            "reputation_negative_threshold",
+            "reputation_negative_role_id",
+            "reputation_positive_threshold",
+            "reputation_positive_role_id",
+        }
         | _IMMUNE_KEYS
         | _PENALTY_KEYS
         | _COOLDOWN_KEYS
@@ -257,6 +314,7 @@ def build_dashboard_settings_audit(
             "gamification_enabled",
             "panel_sticky_enabled",
             "lobby_ttl_minutes",
+            "party_code_max_length",
             "default_lfg_mode",
         }
     )

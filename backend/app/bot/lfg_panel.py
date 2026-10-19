@@ -14,12 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.events import EventBus
 from app.db.models import LfgPanelPost
-from app.services.errors import RankRangeError
+from app.services.errors import PartyCodeInvalidError, RankRangeError
+from app.bot.party_code_config import (
+    party_code_max_length_from_runtime,
+    resolve_party_code_max_length,
+)
+from app.services.party_code import normalize_party_code
 from app.services.guild_config import GuildConfigService
 from app.services.lfg_embed_style import (
     DEFAULT_COMPETITIVE_COLOR,
     DEFAULT_PANEL_CTA,
     DEFAULT_PANEL_LEAD,
+    LfgEmbedPanelSettings,
     LobbyEmbedStyle,
     embed_custom_text,
     lobby_embed_style_from_config,
@@ -40,9 +46,8 @@ logger = logging.getLogger(__name__)
 PANEL_BUTTON_CUSTOM_ID = "lfg:panel:create"
 PANEL_EMBED_TITLE = "LFG — Criar grupo"
 PANEL_EMBED_DESCRIPTION = (
-    "**Simples:** publica o código no canal (só **Fechar**). "
-    "**Detalhado:** lista no Discord (**Entrar** / **Sair**).\n"
-    "**Criar grupo** → escolhe o tipo · ou `/procurar` (simples por defeito)."
+    "**Criar grupo** → vagas + código → **Publicar**. "
+    "Também podes clicar com o botão direito numa mensagem → **Apps** → **Criar pedido LFG**."
 )
 
 # Últimos ranks do pedido simples por host (só memória do processo; melhora repetição no mesmo dia).
@@ -268,24 +273,34 @@ def build_panel_embed(
     guide_channel_id: int = 0,
 ) -> discord.Embed:
     decorative = embed_style.panel_decorative if embed_style is not None else True
+    vis = (
+        embed_style.panel_visibility
+        if embed_style is not None and embed_style.panel_visibility is not None
+        else LfgEmbedPanelSettings()
+    )
     custom_title = embed_custom_text(embed_style, "panel_title", "")
     title = custom_title if custom_title else _panel_title(decorative)
+    if not vis.show_title:
+        title = None
     custom_body = embed_custom_text(embed_style, "panel_description", "")
+    parts: list[str] = []
     if custom_body:
-        description = custom_body
+        if vis.show_body:
+            parts.append(custom_body)
     else:
-        parts: list[str] = []
-        if decorative:
+        if vis.show_lead and decorative:
             lead = embed_custom_text(embed_style, "panel_lead", DEFAULT_PANEL_LEAD)
             if lead.strip():
                 parts.append(lead.strip())
-        parts.append(PANEL_EMBED_DESCRIPTION)
-        if decorative:
+        if vis.show_body:
+            parts.append(PANEL_EMBED_DESCRIPTION)
+        if vis.show_cta and decorative:
             cta = embed_custom_text(embed_style, "panel_cta", DEFAULT_PANEL_CTA)
             if cta.strip():
                 parts.append(cta.strip())
-        description = "\n\n".join(parts)
-    description = _append_guide_channel_line(description, guide_channel_id)
+    description = "\n\n".join(parts)
+    if vis.show_guide:
+        description = _append_guide_channel_line(description, guide_channel_id)
     hex_color = (
         parse_embed_hex_color(embed_style.panel_color, default=DEFAULT_COMPETITIVE_COLOR)
         if embed_style is not None
@@ -293,19 +308,19 @@ def build_panel_embed(
     )
     embed = discord.Embed(
         title=title,
-        description=description,
+        description=description or None,
         color=int(hex_color, 16),
     )
     if embed_style is not None:
         brand = (embed_style.panel_footer_brand or embed_style.footer_brand or "").strip()
-        if brand:
+        if vis.show_footer and brand:
             embed.set_footer(text=brand)
-        if embed_style.panel_thumbnail_url:
+        if vis.show_thumbnail and embed_style.panel_thumbnail_url:
             embed.set_thumbnail(url=embed_style.panel_thumbnail_url)
         panel_banner = (embed_style.panel_banner_url or "").strip()
         if not panel_banner and embed_style.banner_on_panel:
             panel_banner = (embed_style.banner_url or "").strip()
-        if panel_banner:
+        if vis.show_banner and panel_banner:
             embed.set_image(url=panel_banner)
     return embed
 
@@ -621,25 +636,53 @@ class PanelAgentsPublishView(discord.ui.View):
 class PanelPostStyleView(discord.ui.View):
     """Escolha simples vs detalhado antes do formulário."""
 
-    def __init__(self, panel: CreateGroupPanelView) -> None:
+    def __init__(
+        self,
+        panel: CreateGroupPanelView,
+        *,
+        simple_enabled: bool = True,
+        detailed_enabled: bool = True,
+    ) -> None:
         super().__init__(timeout=120)
         self._panel = panel
+        if simple_enabled:
+            simple_btn = discord.ui.Button(
+                label="Simples",
+                style=discord.ButtonStyle.primary,
+                row=0,
+            )
 
-    @discord.ui.button(
-        label="Simples",
-        style=discord.ButtonStyle.primary,
-        row=0,
-    )
-    async def simple(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(SimpleCreateGroupModal(self._panel))
+            async def _simple(interaction: discord.Interaction) -> None:
+                code_len = await resolve_party_code_max_length(
+                    self._panel.guild_config,
+                    self._panel.session_factory,
+                    interaction.guild.id if interaction.guild else None,
+                )
+                await interaction.response.send_modal(
+                    SimpleCreateGroupModal(self._panel, code_max_length=code_len)
+                )
 
-    @discord.ui.button(
-        label="Detalhado",
-        style=discord.ButtonStyle.secondary,
-        row=0,
-    )
-    async def detailed(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(CreateGroupModal(self._panel))
+            simple_btn.callback = _simple
+            self.add_item(simple_btn)
+        if detailed_enabled:
+            detailed_btn = discord.ui.Button(
+                label="Detalhado",
+                style=discord.ButtonStyle.secondary,
+                row=0,
+            )
+
+            async def _detailed(interaction: discord.Interaction) -> None:
+                code_len = await resolve_party_code_max_length(
+                    self._panel.guild_config,
+                    self._panel.session_factory,
+                    interaction.guild.id if interaction.guild else None,
+                )
+                await interaction.response.send_modal(
+                    CreateGroupModal(self._panel, code_max_length=code_len)
+                )
+
+            detailed_btn.callback = _detailed
+            self.add_item(detailed_btn)
 
 
 class SimpleRankPublishView(discord.ui.View):
@@ -752,24 +795,27 @@ class SimpleRankPublishView(discord.ui.View):
 
 
 class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
-    vagas = discord.ui.TextInput(
-        label="Quantas vagas? (1 a 4)",
-        placeholder="2",
-        default="2",
-        min_length=1,
-        max_length=1,
-        required=True,
-    )
-    codigo = discord.ui.TextInput(
-        label="Código da party",
-        placeholder="ABC123",
-        required=True,
-        max_length=32,
-    )
-
-    def __init__(self, panel: CreateGroupPanelView) -> None:
+    def __init__(self, panel: CreateGroupPanelView, *, code_max_length: int) -> None:
         super().__init__()
         self._panel = panel
+        self._code_max_length = code_max_length
+        self.vagas = discord.ui.TextInput(
+            label="Quantas vagas? (1 a 4)",
+            placeholder="2",
+            default="2",
+            min_length=1,
+            max_length=1,
+            required=True,
+        )
+        self.codigo = discord.ui.TextInput(
+            label=f"Código da party ({code_max_length} caracteres)",
+            placeholder="ABC123"[:code_max_length],
+            required=True,
+            min_length=code_max_length,
+            max_length=code_max_length,
+        )
+        self.add_item(self.vagas)
+        self.add_item(self.codigo)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
@@ -780,7 +826,13 @@ class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
                     ephemeral=True,
                 )
                 return
-            party_code = self.codigo.value.strip().upper()
+            try:
+                party_code = normalize_party_code(
+                    self.codigo.value, max_length=self._code_max_length
+                )
+            except PartyCodeInvalidError as exc:
+                await interaction.response.send_message(str(exc), ephemeral=True)
+                return
             if not party_code:
                 await interaction.response.send_message(
                     "Indica o **código da party**.",
@@ -810,24 +862,27 @@ class SimpleCreateGroupModal(discord.ui.Modal, title="Pedido simples"):
 
 
 class CreateGroupModal(discord.ui.Modal, title="Criar pedido LFG"):
-    vagas = discord.ui.TextInput(
-        label="Quantas vagas? (1 a 4)",
-        placeholder="2",
-        default="2",
-        min_length=1,
-        max_length=1,
-        required=True,
-    )
-    codigo = discord.ui.TextInput(
-        label="Código da party (opcional)",
-        placeholder="ABC123",
-        required=False,
-        max_length=32,
-    )
-
-    def __init__(self, panel: CreateGroupPanelView) -> None:
+    def __init__(self, panel: CreateGroupPanelView, *, code_max_length: int) -> None:
         super().__init__()
         self._panel = panel
+        self._code_max_length = code_max_length
+        self.vagas = discord.ui.TextInput(
+            label="Quantas vagas? (1 a 4)",
+            placeholder="2",
+            default="2",
+            min_length=1,
+            max_length=1,
+            required=True,
+        )
+        self.codigo = discord.ui.TextInput(
+            label=f"Código da party (opcional, {code_max_length} caracteres)",
+            placeholder="ABC123"[:code_max_length],
+            required=False,
+            min_length=code_max_length,
+            max_length=code_max_length,
+        )
+        self.add_item(self.vagas)
+        self.add_item(self.codigo)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         slots = parse_panel_slots(self.vagas.value)
@@ -838,7 +893,17 @@ class CreateGroupModal(discord.ui.Modal, title="Criar pedido LFG"):
             )
             return
 
-        party_code = self.codigo.value.strip().upper() if self.codigo.value.strip() else None
+        try:
+            party_code = (
+                normalize_party_code(
+                    self.codigo.value, max_length=self._code_max_length
+                )
+                if self.codigo.value.strip()
+                else None
+            )
+        except PartyCodeInvalidError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
         if interaction.user is None:
             await interaction.response.send_message("Comando só no servidor.", ephemeral=True)
             return
@@ -910,9 +975,28 @@ class CreateGroupPanelView(discord.ui.View):
                 ephemeral=True,
             )
             return
+        runtime = None
+        if guild_id is not None:
+            runtime = await self.guild_config.get_config_for_factory(
+                self.session_factory, guild_id
+            )
+        simple_ok = runtime.lfg_post_style_simple_enabled if runtime else True
+        detailed_ok = runtime.lfg_post_style_detailed_enabled if runtime else True
+        if simple_ok:
+            code_len = party_code_max_length_from_runtime(runtime)
+            await interaction.response.send_modal(
+                SimpleCreateGroupModal(self, code_max_length=code_len)
+            )
+            return
+        if detailed_ok:
+            await interaction.response.send_message(
+                "O painel só cria pedidos **simples**. "
+                "Para o modo **detalhado**, usa `/procurar` e escolhe tipo Detalhado.",
+                ephemeral=True,
+            )
+            return
         await interaction.response.send_message(
-            "**Simples** (recomendado) ou **Detalhado**?",
-            view=PanelPostStyleView(self),
+            "Nenhum tipo de pedido está ativo. A staff tem de ativar Simples ou Detalhado no /admin.",
             ephemeral=True,
         )
 

@@ -8,7 +8,7 @@ Objetivos simples, medidos com `/metrics` (Prometheus) e logs. Não são SLAs co
 
 **Medição:** histograma `lfg_interaction_latency_seconds` (observado após `interaction.response` nos handlers de `LobbyView`).
 
-**Alerta sugerido:** `histogram_quantile(0.99, rate(lfg_interaction_latency_seconds_bucket[5m])) > 2` durante 10 min.
+**Alerta sugerido:** `histogram_quantile(0.99, rate(lfg_interaction_latency_seconds_bucket[5m])) > 2` durante 10 min (implementado em `deploy/observability/prometheus/alerts.yml`).
 
 ## 2. Consistência após reinício
 

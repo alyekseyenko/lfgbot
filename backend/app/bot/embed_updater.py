@@ -88,6 +88,9 @@ class EmbedUpdater:
     def set_bot(self, bot: discord.Client) -> None:
         self._bot = bot
 
+    def bot_ready(self) -> bool:
+        return self._bot is not None and self._bot.is_ready()
+
     def seed_host_member(self, guild_id: int, member: discord.Member) -> None:
         expires = time.monotonic() + HOST_MEMBER_CACHE_TTL_SECONDS
         self._host_member_cache[(guild_id, member.id)] = (member, expires)
@@ -206,12 +209,23 @@ class EmbedUpdater:
         if lobby_view_enabled(lobby):
             active = [m for m in lobby.members if m.left_at is None]
             free = max(0, lobby.slots - len(active))
-            view = make_lobby_view(lobby.id, lobby.post_style)
+            show_close_button = True
+            show_edit_button = True
+            if embed_style is not None:
+                show_close_button = embed_style.visibility.show_close_button
+                show_edit_button = embed_style.visibility.show_edit_button
+            view = make_lobby_view(
+                lobby.id,
+                lobby.post_style,
+                show_close_button=show_close_button,
+                show_edit_button=show_edit_button,
+            )
             view.bind(self._session_factory, self._event_bus, self._guild_config)
             view.refresh_buttons(lobby.state.value, free)
 
         try:
             await message.edit(
+                content=built.content or "",
                 embed=built.embed,
                 view=view,
                 allowed_mentions=allowed_mentions_for_lobby(built),
@@ -265,6 +279,7 @@ class EmbedUpdater:
         )
         try:
             await message.edit(
+                content=built.content or "",
                 embed=built.embed,
                 view=None,
                 allowed_mentions=allowed_mentions_for_lobby(built),

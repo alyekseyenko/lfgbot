@@ -18,7 +18,7 @@ async def test_lifetime_includes_legacy_offsets(session: AsyncSession) -> None:
         host_id=1,
         mode="Competitivo",
         slots=2,
-        party_code="ABC",
+        party_code="ABC001",
         state=LobbyState.open,
         expires_at=now + timedelta(hours=1),
         channel_id=99,

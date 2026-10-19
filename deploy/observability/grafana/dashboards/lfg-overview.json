@@ -18,12 +18,16 @@
     },
     {
       "type": "timeseries",
-      "title": "Latência de ack (p95)",
+      "title": "Latência de ack (p95 / p99 SLO)",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(lfg_interaction_latency_seconds_bucket[5m])) by (le))",
           "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(lfg_interaction_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
         }
       ]
     },

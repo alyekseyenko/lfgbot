@@ -17,6 +17,7 @@ from app.services import lobbies as lobby_service
 from app.services.errors import (
     HostRecreateBlockedError,
     PartyCodeInUseError,
+    PartyCodeInvalidError,
     RankRangeError,
     SearchBlockedError,
 )
@@ -98,7 +99,12 @@ async def begin_lobby_create(
                 guild_config=guild_config,
                 create_source=create_source,
             )
-        except (SearchBlockedError, HostRecreateBlockedError, PartyCodeInUseError) as exc:
+        except (
+            SearchBlockedError,
+            HostRecreateBlockedError,
+            PartyCodeInUseError,
+            PartyCodeInvalidError,
+        ) as exc:
             if interaction is not None:
                 await interaction.followup.send(str(exc), ephemeral=True)
             return "rejected"
@@ -220,7 +226,12 @@ class ReplaceLobbyView(discord.ui.View):
                 create_source=self._create_source,
                 post_style=self._params.post_style,
             )
-        except (SearchBlockedError, HostRecreateBlockedError, PartyCodeInUseError) as exc:
+        except (
+            SearchBlockedError,
+            HostRecreateBlockedError,
+            PartyCodeInUseError,
+            PartyCodeInvalidError,
+        ) as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return
         except Exception:

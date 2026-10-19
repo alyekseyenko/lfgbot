@@ -47,6 +47,7 @@ class Guild(Base):
     valorant_agent_roles: Mapped[list["GuildValorantAgentRole"]] = relationship(
         back_populates="guild"
     )
+    creator_levels: Mapped[list["GuildCreatorLevel"]] = relationship(back_populates="guild")
 
 
 class GuildSettings(Base):
@@ -57,6 +58,26 @@ class GuildSettings(Base):
     )
     lfg_channel_ids: Mapped[list[int]] = mapped_column(JSONB, nullable=False, server_default="[]")
     announce_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    weekly_leaderboard_anchor: Mapped[date | None] = mapped_column(nullable=True)
+    reputation_channel_id: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    reputation_delay_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="50"
+    )
+    reputation_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reputation_negative_threshold: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="-15"
+    )
+    reputation_negative_role_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    reputation_positive_threshold: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="25"
+    )
+    reputation_positive_role_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
     auto_format_messages: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
@@ -84,6 +105,9 @@ class GuildSettings(Base):
         Boolean, nullable=False, server_default="true"
     )
     lobby_ttl_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="45")
+    party_code_max_length: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="6"
+    )
     immune_role_ids: Mapped[list[int]] = mapped_column(JSONB, nullable=False, server_default="[]")
     lfg_embed_color_source: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default="mode"
@@ -140,6 +164,18 @@ class GuildSettings(Base):
     lfg_embed_thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     lfg_embed_simple: Mapped[dict[str, object]] = mapped_column(
         JSONB, nullable=False, server_default="{}"
+    )
+    lfg_embed_detailed: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    lfg_embed_panel: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    lfg_post_style_simple_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    lfg_post_style_detailed_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
     )
     immune_embed_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
@@ -307,6 +343,56 @@ class LeaderboardPost(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
+class LobbyReputationPost(Base):
+    __tablename__ = "lobby_reputation_posts"
+
+    lobby_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lobbies.id", ondelete="CASCADE"), primary_key=True
+    )
+    channel_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    posted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class GuildReputationAdjustment(Base):
+    __tablename__ = "guild_reputation_adjustments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    discord_guild_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("guilds.discord_guild_id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.discord_id", ondelete="CASCADE"), nullable=False
+    )
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.discord_id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class LobbyReputationVote(Base):
+    __tablename__ = "lobby_reputation_votes"
+    __table_args__ = (
+        CheckConstraint("value IN (-1, 1)", name="ck_lobby_reputation_vote_value"),
+    )
+
+    lobby_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lobbies.id", ondelete="CASCADE"), primary_key=True
+    )
+    voter_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.discord_id", ondelete="CASCADE"), primary_key=True
+    )
+    value: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class LfgPanelPost(Base):
     __tablename__ = "lfg_panel_posts"
 
@@ -404,3 +490,26 @@ class GuildValorantAgentRole(Base):
     discord_role_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     guild: Mapped[Guild] = relationship(back_populates="valorant_agent_roles")
+
+
+class GuildCreatorLevel(Base):
+    """Níveis de criador de sala (grupos criados). role_id é estrutura; o bot ainda não atribui."""
+
+    __tablename__ = "guild_creator_levels"
+    __table_args__ = (
+        UniqueConstraint("discord_guild_id", "level_number", name="uq_guild_creator_level_number"),
+        CheckConstraint("level_number >= 1 AND level_number <= 20", name="ck_creator_level_number"),
+        CheckConstraint("min_rooms >= 0", name="ck_creator_level_min_rooms"),
+        Index("ix_guild_creator_levels_guild_rooms", "discord_guild_id", "min_rooms"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    discord_guild_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("guilds.discord_guild_id", ondelete="CASCADE"), nullable=False
+    )
+    level_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    min_rooms: Mapped[int] = mapped_column(Integer, nullable=False)
+    discord_role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    guild: Mapped[Guild] = relationship(back_populates="creator_levels")

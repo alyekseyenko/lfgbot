@@ -2,17 +2,15 @@
 from __future__ import annotations
 
 import io
-import os
 import sys
 import tarfile
 from pathlib import Path
 
 import paramiko
 
-HOST = os.environ.get("VPS_HOST", "167.233.121.62")
-USER = os.environ.get("VPS_USER", "root")
-PASSWORD = os.environ.get("VPS_SSH_PASSWORD", "")
-DIR = os.environ.get("VPS_LFG_DIR", "/root/lfg-test")
+from vps_common import vps_lfg_dir, vps_host, vps_password, vps_user
+
+DIR = vps_lfg_dir()
 ROOT = Path(__file__).resolve().parents[1]
 
 SKIP_DIRS = {
@@ -58,17 +56,19 @@ def run(client: paramiko.SSHClient, cmd: str, timeout: int = 900) -> tuple[int, 
 
 
 def main() -> int:
-    if not PASSWORD:
-        print("Set VPS_SSH_PASSWORD in the environment (do not commit it).", file=sys.stderr)
-        return 1
+    host = vps_host()
+    password = vps_password()
+    user = vps_user()
 
     print("Creating tarball...")
     payload = build_tarball()
-    print(f"Uploading {len(payload) // 1024} KiB to {HOST}:{DIR} ...")
+    print(f"Uploading {len(payload) // 1024} KiB to {host}:{DIR} ...")
 
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(HOST, username=USER, password=PASSWORD, timeout=30, allow_agent=False, look_for_keys=False)
+    client.connect(
+        host, username=user, password=password, timeout=30, allow_agent=False, look_for_keys=False
+    )
 
     sftp = client.open_sftp()
     remote_tar = "/tmp/lfg-deploy.tgz"

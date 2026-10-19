@@ -27,6 +27,13 @@ class ImmuneEmbedTierOut(BaseModel):
 class GuildSettingsOut(BaseModel):
     lfg_channel_ids: list[str] = Field(default_factory=list)
     announce_channel_id: str | None = None
+    weekly_leaderboard_anchor: str | None = None
+    reputation_channel_id: str = "0"
+    reputation_delay_minutes: int = Field(default=50, ge=10, le=180)
+    reputation_negative_threshold: int = Field(default=-15, ge=-10_000, le=-1)
+    reputation_negative_role_id: str = "0"
+    reputation_positive_threshold: int = Field(default=25, ge=1, le=10_000)
+    reputation_positive_role_id: str = "0"
     auto_format_messages: bool = True
     default_lfg_mode: str = "Competitivo"
     gamification_enabled: bool = False
@@ -34,6 +41,7 @@ class GuildSettingsOut(BaseModel):
     log_channel_id: str = "0"
     panel_sticky_enabled: bool = True
     lobby_ttl_minutes: int = 45
+    party_code_max_length: int = Field(default=6, ge=4, le=12)
     immune_role_ids: list[str] = Field(default_factory=list)
     lfg_embed_color_source: Literal["mode", "host_rank", "min_rank", "max_rank"] = "mode"
     rank_embed_colors: dict[str, str] = Field(default_factory=dict)
@@ -57,6 +65,10 @@ class GuildSettingsOut(BaseModel):
     lfg_panel_decorative: bool = True
     lfg_embed_thumbnail_url: str | None = None
     lfg_embed_simple: dict[str, object] = Field(default_factory=dict)
+    lfg_embed_detailed: dict[str, object] = Field(default_factory=dict)
+    lfg_embed_panel: dict[str, object] = Field(default_factory=dict)
+    lfg_post_style_simple_enabled: bool = True
+    lfg_post_style_detailed_enabled: bool = True
     immune_embed_enabled: bool = True
     immune_embed_color: str = "FFD700"
     immune_embed_label: str = "Pedido em destaque"
@@ -78,6 +90,13 @@ class GuildSettingsOut(BaseModel):
 class GuildSettingsPatch(BaseModel):
     lfg_channel_ids: list[str] | None = None
     announce_channel_id: str | None = None
+    weekly_leaderboard_anchor: str | None = None
+    reputation_channel_id: str | None = None
+    reputation_delay_minutes: int | None = Field(default=None, ge=10, le=180)
+    reputation_negative_threshold: int | None = Field(default=None, ge=-10_000, le=-1)
+    reputation_negative_role_id: str | None = None
+    reputation_positive_threshold: int | None = Field(default=None, ge=1, le=10_000)
+    reputation_positive_role_id: str | None = None
     auto_format_messages: bool | None = None
     default_lfg_mode: str | None = None
     gamification_enabled: bool | None = None
@@ -85,6 +104,7 @@ class GuildSettingsPatch(BaseModel):
     log_channel_id: str | None = None
     panel_sticky_enabled: bool | None = None
     lobby_ttl_minutes: int | None = None
+    party_code_max_length: int | None = Field(default=None, ge=4, le=12)
     immune_role_ids: list[str] | None = None
     lfg_embed_color_source: Literal["mode", "host_rank", "min_rank", "max_rank"] | None = None
     rank_embed_colors: dict[str, str] | None = None
@@ -108,6 +128,10 @@ class GuildSettingsPatch(BaseModel):
     lfg_panel_decorative: bool | None = None
     lfg_embed_thumbnail_url: str | None = None
     lfg_embed_simple: dict[str, object] | None = None
+    lfg_embed_detailed: dict[str, object] | None = None
+    lfg_embed_panel: dict[str, object] | None = None
+    lfg_post_style_simple_enabled: bool | None = None
+    lfg_post_style_detailed_enabled: bool | None = None
     immune_embed_enabled: bool | None = None
     immune_embed_color: str | None = None
     immune_embed_label: str | None = None
@@ -237,6 +261,20 @@ class ProfileStatsOut(BaseModel):
     total_completions: int
     kicks_received: int
     next_level_hint: str
+    rooms_created: int = 0
+    next_min_rooms: int | None = None
+    creator_level_number: int = 0
+
+
+class CreatorLevelItem(BaseModel):
+    level_number: int
+    name: str
+    min_rooms: int
+    discord_role_id: str | None = None
+
+
+class CreatorLevelsPut(BaseModel):
+    levels: list[CreatorLevelItem]
 
 
 class RecentCompletionOut(BaseModel):

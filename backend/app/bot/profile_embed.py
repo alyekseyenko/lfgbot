@@ -15,7 +15,6 @@ from app.services.gamification import (
     RecentCompletion,
     level_from_counts,
     progress_bar,
-    role_name_for_level,
 )
 
 
@@ -25,14 +24,19 @@ class ProfileEmbedBuild:
     mention_role_ids: list[int]
 
 
-def _level_color(level: str) -> discord.Colour:
-    if level == LEVEL_RADIANTE:
-        return discord.Colour.from_rgb(255, 200, 60)
-    if level == LEVEL_AGENTE:
-        return discord.Colour.from_rgb(90, 160, 255)
-    if level == LEVEL_RECRUTA:
-        return discord.Colour.from_rgb(80, 200, 120)
-    return discord.Colour.from_rgb(120, 120, 128)
+def _level_color(level_number: int) -> discord.Colour:
+    palette = (
+        (120, 120, 128),
+        (80, 200, 120),
+        (90, 160, 255),
+        (180, 110, 255),
+        (255, 160, 60),
+        (255, 200, 60),
+    )
+    if level_number <= 0:
+        return discord.Colour.from_rgb(*palette[0])
+    rgb = palette[min(level_number, len(palette) - 1)]
+    return discord.Colour.from_rgb(*rgb)
 
 
 def _relative_pt(when: datetime, now: datetime) -> str:
@@ -53,17 +57,14 @@ def _kind_label_pt(kind: str) -> str:
     return "Host" if kind == "host" else "Jogador"
 
 
-def _lfg_role_line(guild: discord.Guild | None, level: str, mention_ids: list[int]) -> str:
-    role_name = role_name_for_level(level)
-    if role_name is None:
-        return "Completa **1 grupo** (cheio, ≥3 min) para desbloqueares **LFG Recruta**."
-    if guild is None:
-        return f"Cargo LFG: **{role_name}**"
-    role = discord.utils.get(guild.roles, name=role_name)
-    if role is None:
-        return f"Cargo LFG: **{role_name}** _(cria a role no servidor)_"
-    mention_ids.append(role.id)
-    return f"Cargo LFG: {role.mention}"
+def format_creator_progress(stats: ProfileStats) -> str:
+    rooms = stats.rooms_created
+    if stats.next_min_rooms is None:
+        bar = progress_bar(10, 10, width=12)
+        return f"```\n{stats.level} · nível máximo\n{rooms} grupos criados\n{bar}\n```"
+    goal = stats.next_min_rooms
+    bar = progress_bar(rooms, goal, width=12)
+    return f"```\n{stats.level} · {rooms}/{goal} grupos\n{bar}\n```"
 
 
 def _valorant_rank_line(
@@ -119,27 +120,36 @@ def build_profile_embed(
     last_completed_at: datetime | None = None,
     recent: list[RecentCompletion] | None = None,
     avatar_url: str | None = None,
+    reputation_score: int | None = None,
 ) -> ProfileEmbedBuild:
     mention_ids: list[int] = []
-    level_label = stats.level if stats.level != LEVEL_NONE else "Sem nível"
+    level_label = stats.level if stats.level not in (LEVEL_NONE, "—") else "Sem nível"
 
     description_lines = [
-        f"## {level_label}",
-        _lfg_role_line(guild, stats.level, mention_ids),
+        f"## Criador · {level_label}",
+        f"Salas criadas: **{stats.rooms_created}** (histórico completo)",
         _valorant_rank_line(guild, valorant_rank, mention_ids),
     ]
 
     embed = discord.Embed(
-        colour=_level_color(stats.level),
+        colour=_level_color(stats.creator_level_number),
         description="\n".join(description_lines),
         timestamp=datetime.now(UTC),
     )
     embed.set_author(name=display_name, icon_url=avatar_url)
     embed.title = "Perfil LFG"
 
-    embed.add_field(name="Host", value=f"**{stats.host_completions}**", inline=True)
-    embed.add_field(name="Jogador", value=f"**{stats.player_completions}**", inline=True)
-    embed.add_field(name="Total", value=f"**{stats.total_completions}**", inline=True)
+    embed.add_field(name="Grupos criados", value=f"**{stats.rooms_created}**", inline=True)
+    embed.add_field(name="Completos (host)", value=f"**{stats.host_completions}**", inline=True)
+    embed.add_field(name="Completos (jogador)", value=f"**{stats.player_completions}**", inline=True)
+
+    if reputation_score is not None:
+        sign = "+" if reputation_score > 0 else ""
+        embed.add_field(
+            name="Reputação LFG",
+            value=f"**{sign}{reputation_score}**",
+            inline=True,
+        )
 
     if stats.kicks_received > 0:
         embed.add_field(
@@ -149,8 +159,8 @@ def build_profile_embed(
         )
 
     embed.add_field(
-        name="Próximo nível",
-        value=format_progress_block(stats.host_completions, stats.total_completions),
+        name="Próximo nível de criador",
+        value=format_creator_progress(stats),
         inline=False,
     )
 

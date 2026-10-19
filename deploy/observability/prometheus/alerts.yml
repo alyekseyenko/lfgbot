@@ -1,0 +1,35 @@
+groups:
+  - name: lfg_slo
+    rules:
+      - alert: LfgInteractionLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(lfg_interaction_latency_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 ack de interações LFG > 2s (SLO)"
+          description: "Ver handlers LobbyView e carga na BD."
+
+      - alert: LfgNotReady
+        expr: up{job="lfg-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scrape /metrics falhou (app down?)"
+          description: "Verificar container app e /health/ready."
+
+      - alert: LfgEmbedEditsSpike
+        expr: |
+          rate(lfg_embed_edits_total[5m]) > 2
+          and rate(lfg_embed_events_total[5m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Muitas edições de embed por segundo"
+          description: "Possível debounce insuficiente ou reconciliação agressiva; risco de 429."

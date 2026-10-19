@@ -37,7 +37,7 @@ The API serves the built SPA from `frontend/dist` (see `SPA_STATIC_DIR` in compo
 On your PC:
 
 ```bash
-ssh -L 8010:127.0.0.1:8010 root@167.233.121.62
+ssh -L 8010:127.0.0.1:8010 root@YOUR_VPS_HOST
 ```
 
 Open **http://localhost:8010/admin** (same tab; API + UI on port 8010).

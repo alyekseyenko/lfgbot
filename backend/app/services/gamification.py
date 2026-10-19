@@ -32,6 +32,9 @@ class ProfileStats:
     total_completions: int
     kicks_received: int
     next_level_hint: str
+    rooms_created: int = 0
+    next_min_rooms: int | None = None
+    creator_level_number: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,7 +216,12 @@ async def last_completion_at(session: AsyncSession, user_id: int) -> datetime | 
     return value if isinstance(value, datetime) else None
 
 
-async def profile_stats(session: AsyncSession, user_id: int) -> ProfileStats:
+async def profile_stats(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    discord_guild_id: int | None = None,
+) -> ProfileStats:
     host_result = await session.execute(
         select(func.count())
         .select_from(LobbyCompletion)
@@ -244,14 +252,30 @@ async def profile_stats(session: AsyncSession, user_id: int) -> ProfileStats:
     )
     kicks = int(kicks_result.scalar_one())
 
-    level = level_from_counts(host_count, total)
+    from app.services.creator_levels import (
+        default_creator_levels,
+        ensure_default_creator_levels,
+        count_rooms_created,
+        resolve_creator_progress,
+    )
+
+    rooms = await count_rooms_created(session, user_id, discord_guild_id=discord_guild_id)
+    if discord_guild_id is not None:
+        levels = await ensure_default_creator_levels(session, discord_guild_id)
+    else:
+        levels = default_creator_levels()
+    progress = resolve_creator_progress(rooms, levels)
+
     return ProfileStats(
-        level=level,
+        level=progress.level_name,
         host_completions=host_count,
         player_completions=player_count,
         total_completions=total,
         kicks_received=kicks,
-        next_level_hint=next_level_hint(host_count, total),
+        next_level_hint=progress.next_level_hint,
+        rooms_created=rooms,
+        next_min_rooms=progress.next_level.min_rooms if progress.next_level else None,
+        creator_level_number=progress.level_number,
     )
 
 

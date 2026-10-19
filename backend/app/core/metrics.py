@@ -22,6 +22,14 @@ interaction_latency_seconds = Histogram(
 )
 embed_events_total = Counter("lfg_embed_events_total", "Eventos que pedem atualização de embed")
 embed_edits_total = Counter("lfg_embed_edits_total", "Edições de embed efectuadas (após debounce)")
+embed_reconcile_runs_total = Counter(
+    "lfg_embed_reconcile_runs_total",
+    "Execuções do job de reconciliação periódica de embeds",
+)
+embed_reconcile_lobbies_total = Counter(
+    "lfg_embed_reconcile_lobbies_total",
+    "Lobbies com refresh_now durante reconciliação periódica",
+)
 discord_http_errors_total = Counter(
     "lfg_discord_http_errors_total",
     "Erros HTTP do Discord ao editar/apagar mensagens",

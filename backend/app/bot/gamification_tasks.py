@@ -8,11 +8,13 @@ import discord
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.bot.ranking_embed import build_weekly_ranking_embed
+from app.bot.ranking_embed import build_all_time_creators_embed, build_weekly_ranking_embed
 from app.core.config import Settings
 from app.db.models import User
+from app.services.creator_levels import all_time_top_creators
 from app.services.gamification import (
     PORTUGAL,
+    WeeklyEntry,
     leaderboard_already_posted,
     save_leaderboard_post,
     week_start_for_date,
@@ -46,6 +48,28 @@ async def weekly_leaderboard_embed(
             name_for_id = {int(row[0]): row[1] for row in result.all()}
 
     return build_weekly_ranking_embed(week, hosts, players, name_for_id)
+
+
+async def all_time_creators_embed(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    discord_guild_id: int,
+    limit: int = 10,
+) -> discord.Embed:
+    async with session_factory() as session:
+        rows = await all_time_top_creators(
+            session, discord_guild_id=discord_guild_id, limit=limit
+        )
+    entries = [WeeklyEntry(user_id=row.user_id, count=row.count) for row in rows]
+    user_ids = {e.user_id for e in entries}
+    name_for_id: dict[int, str] = {}
+    if user_ids:
+        async with session_factory() as session:
+            result = await session.execute(
+                select(User.discord_id, User.name).where(User.discord_id.in_(user_ids))
+            )
+            name_for_id = {int(row[0]): row[1] for row in result.all()}
+    return build_all_time_creators_embed(entries, name_for_id)
 
 
 async def _post_leaderboard_to_channels(
